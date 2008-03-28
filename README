@@ -1,0 +1,55 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=2204
+
+===========================================================
+Note: Twitter will phase out Basic authentication on August 16, 2010. At that time, TwitVim versions earlier than 0.5.0, which do not support OAuth, will gradually encounter lower rate limits until they stop working completely on August 31. Please upgrade prior to that date. However, TwitVim 0.4.x will continue to work with identi.ca, which will still support Basic authentication.
+
+TwitVim OAuth support requires a Vim binary compiled with either Perl or Python. See :help TwitVim-install for more details.
+===========================================================
+
+TwitVim is a Vim plugin that allows you to post to Twitter and view Twitter timelines. It is an enhancement of vimscript #2124 by Travis Jeffery. Credit goes to Travis for the original script concept and implementation.
+
+TwitVim supports most of the features of a typical Twitter client, including:
+ - Friends, User, Direct Message, and Mentions timelines
+ - Twitter Search
+ - Replies and retweets
+ - Hashtags (jump to search timeline)
+ - In reply to (See which tweet an @-reply is for.)
+ - Opening links in a browser
+ - User profile display
+ - Twitter Lists
+ - URL shortening and expansion
+
+TwitVim uses cURL to communicate with Twitter. Alternatively, you can configure TwitVim to use Vim's Perl, Python, Ruby, or Tcl interfaces for faster network I/O.
+
+Usage:
+
+:PosttoTwitter - This command will prompt you for a message to send to Twitter.
+:CPosttoTwitter - This command posts the current line in the current buffer to Twitter.
+:BPosttoTwitter - This command posts the current buffer to Twitter.
+
+Alt-T - In Visual select mode, the Alt-T key posts the selected text to Twitter.
+  (use Ctrl-T instead if menu bar is enabled)
+NOTE: The T mapping was changed to Alt-T to avoid overriding the T search command.
+
+Alt-R - Starts a @-reply. (from timeline buffer)
+Alt-D - Starts a direct message. (from timeline buffer)
+
+:FriendsTwitter - View friends timeline.
+:UserTwitter - View your timeline.
+:RepliesTwitter - View @-replies.
+:PublicTwitter - View public timeline.
+:DMTwitter - View direct messages.
+
+:Tweetburner - Shorten a URL with Tweetburner and insert at cursor.
+:ATweetburner - Same as above but insert after cursor.
+:PTweetburner - Same as above but start tweet on cmdline with short URL.
+
+And similar commands for TinyURL, SnipURL, Metamark, bit.ly, is.gd, urlBorg, tr.im, Cligs, and zi.ma.
+
+:SearchTwitter - Use Twitter Search.
+
+Many more commands and mappings are available. See TwitVim's help documentation for full details.
+
+Contact me on Twitter at http://twitter.com/mortonfox
+Get TwitVim announcements at http://twitter.com/twitvim
+
