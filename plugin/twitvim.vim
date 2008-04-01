@@ -4,7 +4,7 @@
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 " Created: March 28, 2008
-" Last Change: March 28, 2008
+" Last updated: April 1, 2008
 " ==============================================================
 
 " Load this module only once.
@@ -84,8 +84,16 @@ function! s:post_twitter(mesg)
 	let mesg = substitute(mesg, '"', '%22', "g")
 	let mesg = substitute(mesg, '&', '%26', "g")
 
-	call system("curl ".s:proxy." ".s:login.' -d status="'.mesg.'" '.s:twupdate)
-	echo "Your tweet was sent. You used" strlen(mesg) "characters."
+	let output = system("curl ".s:proxy." ".s:login.' -d status="'.mesg.'" '.s:twupdate)
+	if v:shell_error != 0
+	    echohl ErrorMsg
+	    echomsg "Error posting your tweet. Result code: ".v:shell_error
+	    echomsg "Output:"
+	    echomsg output
+	    echohl None
+	else
+	    echo "Your tweet was sent. You used" strlen(mesg) "characters."
+	endif
     endif
 endfunction
 
