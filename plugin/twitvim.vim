@@ -1,10 +1,15 @@
 " ==============================================================
 " TwitVim - Post to Twitter from Vim
-" Language: Vim Script
-" Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
+"
+" Version: 0.1.2
+" License: Vim license. See :help license
+" Language: Vim script
+" Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 1, 2008
+" Last updated: April 3, 2008
+"
+" GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
 
 " Load this module only once.
@@ -12,6 +17,10 @@ if exists('loaded_twitvim')
     finish
 endif
 let loaded_twitvim = 1
+
+" Avoid side-effects from cpoptions setting.
+let s:save_cpo = &cpo
+set cpo&vim
 
 let s:proxy = ""
 let s:login = ""
@@ -23,8 +32,7 @@ let s:char_limit = 246
 
 let s:twupdate = "http://twitter.com/statuses/update.xml?source=vim"
 
-" Get user-config variables twitvim_proxy and twitvim_login.
-function! s:get_config()
+function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
     " Format is proxysite:proxyport
     if exists('g:twitvim_proxy')
@@ -32,16 +40,22 @@ function! s:get_config()
     else
 	let s:proxy = ""
     endif
+endfunction
+
+" Get user-config variables twitvim_proxy and twitvim_login.
+function! s:get_config()
+    call s:get_config_proxy()
 
     " Get Twitter login info from twitvim_login in .vimrc or _vimrc.
     " Format is username:password
-    if exists('g:twitvim_login')
+    if exists('g:twitvim_login') && g:twitvim_login != ''
 	let s:login = "-u " . g:twitvim_login
     else
 	" Beep and error-highlight 
 	execute "normal \<Esc>"
 	echohl ErrorMsg
-	echomsg 'Twitter login not set. Please add to .vimrc: let twitvim_login="USER:PASS"'
+	echomsg 'Twitter login not set.'
+	    \ 'Please add to .vimrc: let twitvim_login="USER:PASS"'
 	echohl None
 	return -1
     endif
@@ -72,7 +86,8 @@ function! s:post_twitter(mesg)
     " string length.
     if strlen(mesg) > s:char_limit
 	echohl WarningMsg
-	echo "Your tweet has" strlen(mesg) - s:char_limit "too many characters. It was not sent."
+	echo "Your tweet has" strlen(mesg) - s:char_limit
+	    \ "too many characters. It was not sent."
 	echohl None
     elseif strlen(mesg) < 1
 	echohl WarningMsg
@@ -84,7 +99,8 @@ function! s:post_twitter(mesg)
 	let mesg = substitute(mesg, '"', '%22', "g")
 	let mesg = substitute(mesg, '&', '%26', "g")
 
-	let output = system("curl ".s:proxy." ".s:login.' -d status="'.mesg.'" '.s:twupdate)
+	let output = system("curl ".s:proxy." ".s:login.' -d status="'.
+		    \mesg.'" '.s:twupdate)
 	if v:shell_error != 0
 	    echohl ErrorMsg
 	    echomsg "Error posting your tweet. Result code: ".v:shell_error
@@ -113,15 +129,28 @@ function! s:CmdLine_Twitter()
 endfunction
 
 " Prompt user for tweet.
-command! PosttoTwitter :call <SID>CmdLine_Twitter()
+if !exists(":PosttoTwitter")
+    command PosttoTwitter :call <SID>CmdLine_Twitter()
+endif
 
 " Post current line to Twitter.
-command! CPosttoTwitter :call <SID>post_twitter(getline('.'))
+if !exists(":CPosttoTwitter")
+    command CPosttoTwitter :call <SID>post_twitter(getline('.'))
+endif
 
 " Post entire buffer to Twitter.
-command! BPosttoTwitter :call <SID>post_twitter(join(getline(1, "$")))
+if !exists(":BPosttoTwitter")
+    command BPosttoTwitter :call <SID>post_twitter(join(getline(1, "$")))
+endif
 
 " Post visual selection to Twitter.
-vmap T y:call <SID>post_twitter(@")<cr>
+noremap <SID>Visual y:call <SID>post_twitter(@")<cr>
+noremap <unique> <script> <Plug>TwitvimVisual <SID>Visual
+if !hasmapto('<Plug>TwitvimVisual')
+    vmap <unique> T <Plug>TwitvimVisual
+endif
+
+let &cpo = s:save_cpo
+finish
 
 " vim:set tw=0:

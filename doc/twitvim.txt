@@ -1,0 +1,125 @@
+*twitvim.txt*  Post to Twitter from Vim
+
+		      ---------------------------------
+		      TwitVim: A Twitter client for Vim
+		      ---------------------------------
+
+Author: Po Shan Cheah <morton@mortonfox.com> 
+	http://twitter.com/mortonfox
+
+License: The Vim License applies to twitvim.vim and twitvim.txt (see
+	|copyright|) except use "TwitVim" instead of "Vim". No warranty,
+	express of implied. Use at your own risk.
+
+
+==============================================================================
+1. Contents					*TwitVim* *TwitVim-contents*
+
+	1. Contents................................: |TwitVim-contents|
+	2. Introduction............................: |TwitVim-intro|
+	3. Installation............................: |TwitVim-install|
+	   cURL....................................: |TwitVim-cURL|
+	   twitvim.vim.............................: |TwitVim-add|
+	   twitvim_login...........................: |twitvim_login|
+	   twitvim_proxy...........................: |twitvim_proxy|
+	4. Manual..................................: |TwitVim-manual|
+	4.1. Commands..............................: |TwitVim-commands|
+	     :PosttoTwitter........................: |:PosttoTwitter|
+	     :CPosttoTwitter.......................: |:CPosttoTwitter|
+	     :BPosttoTwitter.......................: |:BPosttoTwitter|
+	4.2. Mapping...............................: |TwitVim-mapping|
+	     T.....................................: |TwitVim-v_T|
+	5. History.................................: |TwitVim-history|
+	6. Credits.................................: |TwitVim-credits|
+
+
+==============================================================================
+2. Introduction						*TwitVim-intro*
+
+TwitVim is a plugin that allows you to post to Twitter, a microblogging
+service at http://www.twitter.com.
+
+
+==============================================================================
+3. Installation						*TwitVim-install*
+
+	1. Install cURL.				*TwitVim-cURL*
+
+	If you don't already have cURL on your system, download it from
+	http://curl.haxx.se/. Make sure that the curl executable is in a
+	directory listed in your PATH environment variable, or the equivalent
+	for your system.
+
+
+	2. twitvim.vim					*TwitVim-add*
+
+	Add twitvim.vim to your plugins directory. The location depends on
+	your operating system. See |add-global-plugin| for details.
+
+
+	3. twitvim_login				*twitvim_login*
+
+	Add the following to your vimrc:
+
+		let twitvim_login = "USER:PASS"
+
+	Replace USER with your Twitter user name and PASS with your Twitter
+	password.
+
+
+	4. twitvim_proxy				*twitvim_proxy*
+
+	This step is only needed if you access the web through a HTTP proxy.
+	If you use a HTTP proxy, add the following to your vimrc:
+
+		let twitvim_proxy = "proxyserver:proxyport"
+
+	Replace proxyserver with the address of the HTTP proxy and proxyport
+	with the port number of the HTTP proxy.
+
+
+==============================================================================
+4. TwitVim Manual					*TwitVim-manual*
+
+------------------------------------------------------------------------------
+4.1. TwitVim Commands					*TwitVim-commands*
+
+	:PosttoTwitter					*:PosttoTwitter*
+
+	This command will prompt you for a message and post it to Twitter.
+
+	:CPosttoTwitter					*:CPosttoTwitter*
+
+	This command posts the current line in the current buffer to Twitter.
+
+	:BPosttoTwitter					*:BPosttoTwitter*
+
+	This command posts the contents of the current buffer to Twitter.
+
+------------------------------------------------------------------------------
+4.2. TwitVim Mapping					*TwitVim-mapping*
+
+	T						*TwitVim-v_T*
+
+	In visual mode, the T key posts the highlighted text to Twitter.
+
+
+==============================================================================
+5. TwitVim History					*TwitVim-history*
+
+	0.1.2 : 2008-04-03 * Make plugin conform to guidelines in
+    			    |write-plugin|.
+			   * Add help documentation.
+	0.1.1 : 2008-04-01 * Add error reporting for cURL problems.
+	0.1   : 2008-03-28 * Initial release.
+
+==============================================================================
+6. TwitVim Credits					*TwitVim-credits*
+
+	Thanks to Travis Jeffery, the author of the original VimTwitter script
+	(vimscript #2124), who came up with the idea of running cURL from Vim
+	to access the Twitter API.
+
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
