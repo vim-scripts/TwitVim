@@ -15,22 +15,34 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 ==============================================================================
 1. Contents					*TwitVim* *TwitVim-contents*
 
-	1. Contents................................: |TwitVim-contents|
-	2. Introduction............................: |TwitVim-intro|
-	3. Installation............................: |TwitVim-install|
-	   cURL....................................: |TwitVim-cURL|
-	   twitvim.vim.............................: |TwitVim-add|
-	   twitvim_login...........................: |twitvim_login|
-	   twitvim_proxy...........................: |twitvim_proxy|
-	4. Manual..................................: |TwitVim-manual|
-	4.1. Commands..............................: |TwitVim-commands|
-	     :PosttoTwitter........................: |:PosttoTwitter|
-	     :CPosttoTwitter.......................: |:CPosttoTwitter|
-	     :BPosttoTwitter.......................: |:BPosttoTwitter|
-	4.2. Mapping...............................: |TwitVim-mapping|
-	     T.....................................: |TwitVim-v_T|
-	5. History.................................: |TwitVim-history|
-	6. Credits.................................: |TwitVim-credits|
+	1. Contents...............................: |TwitVim-contents|
+	2. Introduction...........................: |TwitVim-intro|
+	3. Installation...........................: |TwitVim-install|
+	   cURL...................................: |TwitVim-cURL|
+	   twitvim.vim............................: |TwitVim-add|
+	   twitvim_login..........................: |twitvim_login|
+	   twitvim_proxy..........................: |twitvim_proxy|
+	4. Manual.................................: |TwitVim-manual|
+	4.1. Update Commands......................: |TwitVim-update-commands|
+	     :PosttoTwitter.......................: |:PosttoTwitter|
+	     :CPosttoTwitter......................: |:CPosttoTwitter|
+	     :BPosttoTwitter......................: |:BPosttoTwitter|
+	4.2. Timeline Commands....................: |TwitVim-timeline-commands|
+	     :UserTwitter.........................: |:UserTwitter|
+	     :FriendsTwitter......................: |:FriendsTwitter|
+	     :RepliesTwitter......................: |:RepliesTwitter|
+	     :PublicTwitter.......................: |:PublicTwitter|
+	     :DMTwitter...........................: |:DMTwitter|
+	4.3. Mapping..............................: |TwitVim-mapping|
+	     T....................................: |TwitVim-v_T|
+	5. Timeline Highlighting..................: |TwitVim-highlight|
+	   twitterUser............................: |hl-twitterUser|
+	   twitterTime............................: |hl-twitterTime|
+	   twitterTitle...........................: |hl-twitterTitle|
+	   twitterLink............................: |hl-twitterLink|
+	   twitterReply...........................: |hl-twitterReply|
+	6. History................................: |TwitVim-history|
+	7. Credits................................: |TwitVim-credits|
 
 
 ==============================================================================
@@ -82,7 +94,11 @@ service at http://www.twitter.com.
 4. TwitVim Manual					*TwitVim-manual*
 
 ------------------------------------------------------------------------------
-4.1. TwitVim Commands					*TwitVim-commands*
+4.1. Update Commands				*TwitVim-update-commands*
+
+	These commands post an update to your Twitter account. If the friends,
+	user, or public timeline is visible, TwitVim will insert the update
+	into the timeline view after posting it.
 
 	:PosttoTwitter					*:PosttoTwitter*
 
@@ -97,7 +113,37 @@ service at http://www.twitter.com.
 	This command posts the contents of the current buffer to Twitter.
 
 ------------------------------------------------------------------------------
-4.2. TwitVim Mapping					*TwitVim-mapping*
+4.2. Timeline Commands				*TwitVim-timeline-commands*
+
+	These commands retrieve a Twitter timeline and display it in a special
+	Twitter buffer. TwitVim applies syntax highlighting to highlight
+	certain elements in the timeline view. See |TwitVim-highlight| for a
+	list of highlighting groups it uses.
+
+	:UserTwitter					*:UserTwitter*
+
+	This command displays your Twitter timeline.
+
+	:FriendsTwitter					*:FriendsTwitter*
+
+	This command displays your Twitter timeline with updates from friends
+	merged in.
+
+	:RepliesTwitter					*:RepliesTwitter*
+
+	This command displays a timeline of @-replies that you've received
+	from other Twitter users.
+
+	:PublicTwitter					*:PublicTwitter*
+
+	This command displays the public timeline.
+
+	:DMTwitter					*:DMTwitter*
+
+	This command displays direct messages that you've received.
+
+------------------------------------------------------------------------------
+4.3. Mapping						*TwitVim-mapping*
 
 	T						*TwitVim-v_T*
 
@@ -105,20 +151,57 @@ service at http://www.twitter.com.
 
 
 ==============================================================================
-5. TwitVim History					*TwitVim-history*
+5. Timeline Highlighting				*TwitVim-highlight*
 
+	TwitVim uses a number of highlighting groups to highlight certain
+	elements in the Twitter timeline views. See |:highlight| for details
+	on how to customize these highlighting groups.
+
+	twitterUser					*hl-twitterUser*
+	
+	The Twitter user name at the beginning of each line.
+
+	twitterTime					*hl-twitterTime*
+
+	The time a Twitter update was posted.
+
+	twitterTitle					*hl-twitterTitle*
+
+	The header at the top of the timeline view.
+
+	twitterLink					*hl-twitterLink*
+
+	Link URLs in a Twitter status.
+
+	twitterReply					*hl-twitterReply*
+
+	@-reply in a Twitter status.
+
+
+==============================================================================
+6. TwitVim History					*TwitVim-history*
+
+	0.2.0 : 2008-04-09 * Added views for public, friends, user timelines,
+			     replies, and direct messages. 
+			   * Automatically insert user's posts into
+			     public, friends, or user timeline, if visible.
+			   * Added syntax highlighting for timeline view.
 	0.1.2 : 2008-04-03 * Make plugin conform to guidelines in
     			    |write-plugin|.
 			   * Add help documentation.
 	0.1.1 : 2008-04-01 * Add error reporting for cURL problems.
 	0.1   : 2008-03-28 * Initial release.
 
+
 ==============================================================================
-6. TwitVim Credits					*TwitVim-credits*
+7. TwitVim Credits					*TwitVim-credits*
 
 	Thanks to Travis Jeffery, the author of the original VimTwitter script
 	(vimscript #2124), who came up with the idea of running cURL from Vim
 	to access the Twitter API.
+
+	Techniques for managing the Twitter buffer were adapted from the NERD
+	Tree plugin (vimscript #1658) by Marty Grenfell.
 
 
 ==============================================================================

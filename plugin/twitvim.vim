@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.1.2
+" Version: 0.2.0
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 3, 2008
+" Last updated: April 9, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -35,11 +35,7 @@ let s:twupdate = "http://twitter.com/statuses/update.xml?source=vim"
 function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
     " Format is proxysite:proxyport
-    if exists('g:twitvim_proxy')
-	let s:proxy = "-x " . g:twitvim_proxy
-    else
-	let s:proxy = ""
-    endif
+    let s:proxy = exists('g:twitvim_proxy') ? "-x " . g:twitvim_proxy : ""
 endfunction
 
 " Get user-config variables twitvim_proxy and twitvim_login.
@@ -60,6 +56,25 @@ function! s:get_config()
 	return -1
     endif
     return 0
+endfunction
+
+" Add update to Twitter buffer if public, friends, or user timeline.
+function! s:add_update(output)
+    if s:twit_buftype == "public" || s:twit_buftype == "friends" || s:twit_buftype == "user"
+
+	" Parse the output from the Twitter update call.
+	let matchres = matchlist(a:output, '<created_at>\(.\{-}\)</created_at>.\{-}<text>\(.\{-}\)</text>.\{-}<screen_name>\(.\{-}\)</screen_name>', -1, 1)
+	if matchres == []
+	    return
+	endif
+
+	let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
+	if twit_bufnr > 0
+	    execute twit_bufnr . "wincmd w"
+	    call append(2, matchres[3].': '.s:convert_entity(matchres[2]).' |'.matchres[1].'|')
+	    wincmd p
+	endif
+    endif
 endfunction
 
 " Common code to post a message to Twitter.
@@ -99,7 +114,7 @@ function! s:post_twitter(mesg)
 	let mesg = substitute(mesg, '"', '%22', "g")
 	let mesg = substitute(mesg, '&', '%26', "g")
 
-	let output = system("curl ".s:proxy." ".s:login.' -d status="'.
+	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.
 		    \mesg.'" '.s:twupdate)
 	if v:shell_error != 0
 	    echohl ErrorMsg
@@ -108,6 +123,7 @@ function! s:post_twitter(mesg)
 	    echomsg output
 	    echohl None
 	else
+	    call s:add_update(output)
 	    echo "Your tweet was sent. You used" strlen(mesg) "characters."
 	endif
     endif
@@ -148,6 +164,197 @@ noremap <SID>Visual y:call <SID>post_twitter(@")<cr>
 noremap <unique> <script> <Plug>TwitvimVisual <SID>Visual
 if !hasmapto('<Plug>TwitvimVisual')
     vmap <unique> T <Plug>TwitvimVisual
+endif
+
+" Decode HTML entities. Twitter gives those to us a little weird. For example,
+" a '<' character comes to us as &amp;lt;
+function! s:convert_entity(str)
+    let s = a:str
+    let s = substitute(s, '&amp;', '\&', 'g')
+    let s = substitute(s, '&lt;', '<', 'g')
+    let s = substitute(s, '&gt;', '>', 'g')
+    let s = substitute(s, '&#\(\d\+\);', nr2char(submatch(1)), 'g')
+    return s
+endfunction
+
+let s:twit_winname = "( Twitter )"
+let s:twit_buftype = ""
+
+" Switch to the Twitter window if there is already one or open a new window for
+" Twitter.
+function! s:twitter_win()
+    let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
+    if twit_bufnr > 0
+	execute twit_bufnr . "wincmd w"
+    else
+	execute "new " . s:twit_winname
+	setlocal noswapfile
+	setlocal buftype=nofile
+	setlocal bufhidden=delete 
+	setlocal foldcolumn=0
+	setlocal nobuflisted
+	setlocal nospell
+
+	" Beautify the Twitter window with syntax highlighting.
+	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
+
+	    " Twitter user name: from start of line to first colon.
+	    syntax match twitterUser /^.\{-1,}:/
+
+	    " Use the bars to recognize the time but hide the bars.
+	    syntax match twitterTime /|.\{-1,}|$/ contains=twitterTimeBar
+	    syntax match twitterTimeBar /|/ contained
+
+	    " Use the extra star at the end to recognize the title but hide the
+	    " star.
+	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	    syntax match twitterTitleStar /\*$/ contained
+
+	    " Highlight links in tweets.
+	    syntax match twitterLink "\<http://\S\+"
+	    syntax match twitterLink "\<https://\S\+"
+	    syntax match twitterLink "\<ftp://\S\+"
+
+	    " An @-reply must be preceded by whitespace and ends at a non-word
+	    " character.
+	    syntax match twitterReply "\S\@<!@\w\+"
+
+	    highlight default link twitterUser Identifier
+	    highlight default link twitterTime String
+	    highlight default link twitterTimeBar Ignore
+	    highlight default link twitterTitle Title
+	    highlight default link twitterTitleStar Ignore
+	    highlight default link twitterLink Underlined
+	    highlight default link twitterReply Label
+	endif
+    endif
+endfunction
+
+" Get a Twitter window and stuff text into it.
+function! s:twitter_wintext(text)
+    call s:twitter_win()
+
+    " Overwrite the entire buffer.
+    " Need to use 'silent' or a 'No lines in buffer' message will appear.
+    silent %delete
+    call setline('.', a:text)
+
+    wincmd p
+endfunction
+
+" Show a timeline.
+function! s:show_timeline(timeline)
+    let matchcount = 1
+    let text = []
+    while 1
+	let matchres = matchlist(a:timeline, '<title>\(.\{-}\)</title>.\{-}<pubDate>\(.\{-}\)</pubDate>', -1, matchcount)
+	if matchres == []
+	    break
+	endif
+	if matchcount == 1
+	    " The extra stars at the end are for the syntax highlighter to
+	    " recognize the title. Then the syntax highlighter hides the stars
+	    " by coloring them the same as the background. It is a bad hack.
+	    call add(text, matchres[1].'*')
+	    call add(text, repeat('=', strlen(matchres[1])).'*')
+	else
+	    call add(text, s:convert_entity(matchres[1]).' |'.matchres[2].'|')
+	endif
+	let matchcount += 1
+    endwhile
+    call s:twitter_wintext(text)
+endfunction
+
+" Generic timeline retrieval function.
+function! s:get_timeline(tline_name)
+    let login = ""
+    if a:tline_name == "public"
+	" No authentication is needed for public timeline so just get the proxy
+	" info.
+	call s:get_config_proxy()
+    else
+	let rc = s:get_config()
+	if rc < 0
+	    return -1
+	endif
+	let login = s:login
+    endif
+
+    let url_fname = a:tline_name == "replies" ? "replies.rss" : a:tline_name."_timeline.rss"
+    let output = system("curl -s ".s:proxy." ".login." http://twitter.com/statuses/".url_fname)
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error getting Twitter" a:tline_name "timeline. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return
+    endif
+
+    call s:show_timeline(output)
+    let s:twit_buftype = a:tline_name
+endfunction
+
+" Show direct messages. This requires a bit more string processing than the
+" other timelines.
+function! s:show_dm(timeline)
+    let matchcount = 1
+    let text = []
+    while 1
+	let matchres = matchlist(a:timeline, '<title>\(.\{-}\)</title>.\{-}<description>\(.\{-}\)</description>.\{-}<pubDate>\(.\{-}\)</pubDate>', -1, matchcount)
+	if matchres == []
+	    break
+	endif
+	if matchcount == 1
+	    " The extra stars at the end are for the syntax highlighter to
+	    " recognize the title. Then the syntax highlighter hides the stars
+	    " by coloring them the same as the background. It is a bad hack.
+	    call add(text, matchres[1].'*')
+	    call add(text, repeat('=', strlen(matchres[1])).'*')
+	else
+	    let sender = substitute(matchres[1], '^Message from \(\S\+\) to \S\+$', '\1', '')
+	    call add(text, sender.": ".s:convert_entity(matchres[2]).' |'.matchres[3].'|')
+	endif
+	let matchcount += 1
+    endwhile
+    call s:twitter_wintext(text)
+endfunction
+
+" Get direct messages sent to user.
+function! s:Direct_Messages()
+    let rc = s:get_config()
+    if rc < 0
+	return -1
+    endif
+
+    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages.rss")
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error getting Twitter direct messages. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return
+    endif
+
+    call s:show_dm(output)
+    let s:twit_buftype = "directmessages"
+endfunction
+
+if !exists(":PublicTwitter")
+    command! PublicTwitter :call <SID>get_timeline("public")
+endif
+if !exists(":FriendsTwitter")
+    command! FriendsTwitter :call <SID>get_timeline("friends")
+endif
+if !exists(":UserTwitter")
+    command! UserTwitter :call <SID>get_timeline("user")
+endif
+if !exists(":RepliesTwitter")
+    command! RepliesTwitter :call <SID>get_timeline("replies")
+endif
+if !exists(":DMTwitter")
+    command! DMTwitter :call <SID>Direct_Messages()
 endif
 
 let &cpo = s:save_cpo
