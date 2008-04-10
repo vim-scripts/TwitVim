@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.1
+" Version: 0.2.2
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 10, 2008
+" Last updated: April 11, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -30,7 +30,7 @@ let s:login = ""
 " undesirable, set s:char_limit to 140.
 let s:char_limit = 246
 
-let s:twupdate = "http://twitter.com/statuses/update.xml?source=vim"
+let s:twupdate = "http://twitter.com/statuses/update.xml?source=twitvim"
 
 function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
@@ -129,7 +129,9 @@ function! s:post_twitter(mesg)
     endif
 endfunction
 
-function! s:CmdLine_Twitter()
+" Prompt user for tweet and then post it.
+" If initstr is given, use that as the initial input.
+function! s:CmdLine_Twitter(initstr)
     " Do this here too to check for twitvim_login. This is to avoid having the
     " user type in the message only to be told that his configuration is
     " incomplete.
@@ -139,14 +141,23 @@ function! s:CmdLine_Twitter()
     endif
 
     call inputsave()
-    let mesg = input("Your Twitter: ")
+    let mesg = input("Your Twitter: ", a:initstr)
     call inputrestore()
     call s:post_twitter(mesg)
 endfunction
 
+" This is for a local mapping in the timeline. Start an @-reply on the command
+" line to the author of the tweet on the current line.
+function! s:Quick_Reply()
+    let matchres = matchlist(getline('.'), '^\(\w\+\):')
+    if matchres != []
+	call s:CmdLine_Twitter('@'.matchres[1].' ')
+    endif
+endfunction
+
 " Prompt user for tweet.
 if !exists(":PosttoTwitter")
-    command PosttoTwitter :call <SID>CmdLine_Twitter()
+    command PosttoTwitter :call <SID>CmdLine_Twitter('')
 endif
 
 " Post current line to Twitter.
@@ -194,6 +205,9 @@ function! s:twitter_win()
 	setlocal foldcolumn=0
 	setlocal nobuflisted
 	setlocal nospell
+
+	" Quick reply feature for replying from the timeline.
+	nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
 
 	" Beautify the Twitter window with syntax highlighting.
 	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
@@ -368,14 +382,41 @@ function! s:call_tweetburner(url)
 	echomsg "Output:"
 	echomsg output
 	echohl None
+	return ""
     else
 	return output
     endif
 endfunction
 
-" if !exists(":Tweetburner")
-"     command -nargs=1 Tweetburner :echo <SID>call_tweetburner("<args>")
-" endif
+" Invoke Tweetburner to shorten a URL and insert it at the current position in
+" the current buffer.
+function! s:GetTweetburner(url)
+    let url = a:url
+
+    " Prompt the user to enter a URL if not provided on :Tweetburner command
+    " line.
+    if url == ""
+	call inputsave()
+	let url = input("URL to shorten: ")
+	call inputrestore()
+    endif
+
+    if url == ""
+	echohl WarningMsg
+	echo "No URL provided."
+	echohl None
+	return
+    endif
+
+    let shorturl = s:call_tweetburner(url)
+    if shorturl != ""
+	execute "normal i".shorturl." \<esc>"
+    endif
+endfunction
+
+if !exists(":Tweetburner")
+    command -nargs=? Tweetburner :call <SID>GetTweetburner("<args>")
+endif
 
 let &cpo = s:save_cpo
 finish

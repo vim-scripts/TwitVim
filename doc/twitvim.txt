@@ -33,8 +33,11 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :RepliesTwitter......................: |:RepliesTwitter|
 	     :PublicTwitter.......................: |:PublicTwitter|
 	     :DMTwitter...........................: |:DMTwitter|
-	4.3. Mapping..............................: |TwitVim-mapping|
+	4.3. Mappings.............................: |TwitVim-mappings|
 	     T....................................: |TwitVim-v_T|
+	     Alt-R................................: |TwitVim-A-r|
+	4.4. Utility Commands.....................: |TwitVim-utility|
+	     :Tweetburner.........................: |:Tweetburner|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -143,11 +146,31 @@ service at http://www.twitter.com.
 	This command displays direct messages that you've received.
 
 ------------------------------------------------------------------------------
-4.3. Mapping						*TwitVim-mapping*
+4.3. Mappings						*TwitVim-mappings*
 
 	T						*TwitVim-v_T*
 
 	In visual mode, the T key posts the highlighted text to Twitter.
+
+	Alt-R						*TwitVim-A-r*
+
+	This mapping is local to the timeline buffer. In the timeline buffer,
+	it starts an @-reply on the command line to the author of the tweet on
+	the current line.
+
+------------------------------------------------------------------------------
+4.4. Utility Commands					*TwitVim-utility*
+
+	:Tweetburner					*:Tweetburner*
+	:Tweetburner {url}
+
+	Tweetburner is a URL forwarding and shortening service. See
+	http://tweetburner.com/
+
+	This command calls the Tweetburner API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
 
 
 ==============================================================================
@@ -181,6 +204,9 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.2 : 2008-04-11 * Added quick reply feature.
+			   * Added Tweetburner support.
+			   * Changed client ident to "from twitvim".
 	0.2.1 : 2008-04-10 * Bug fix for Chinese characters in timeline.
 			     Thanks to Leiyue.
 			   * Scroll up to newest tweet after refreshing
