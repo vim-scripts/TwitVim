@@ -181,6 +181,12 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.1 : 2008-04-10 * Bug fix for Chinese characters in timeline.
+			     Thanks to Leiyue.
+			   * Scroll up to newest tweet after refreshing
+			     timeline.
+			   * Changed Twitter window name to avoid unsafe
+			     special characters and clashes with file names.
 	0.2.0 : 2008-04-09 * Added views for public, friends, user timelines,
 			     replies, and direct messages. 
 			   * Automatically insert user's posts into

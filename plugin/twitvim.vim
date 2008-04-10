@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.0
+" Version: 0.2.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 9, 2008
+" Last updated: April 10, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -173,11 +173,11 @@ function! s:convert_entity(str)
     let s = substitute(s, '&amp;', '\&', 'g')
     let s = substitute(s, '&lt;', '<', 'g')
     let s = substitute(s, '&gt;', '>', 'g')
-    let s = substitute(s, '&#\(\d\+\);', nr2char(submatch(1)), 'g')
+    let s = substitute(s, '&#\(\d\+\);','\=nr2char(submatch(1))', 'g')
     return s
 endfunction
 
-let s:twit_winname = "( Twitter )"
+let s:twit_winname = "Twitter_".localtime()
 let s:twit_buftype = ""
 
 " Switch to the Twitter window if there is already one or open a new window for
@@ -238,6 +238,7 @@ function! s:twitter_wintext(text)
     " Need to use 'silent' or a 'No lines in buffer' message will appear.
     silent %delete
     call setline('.', a:text)
+    normal 1G
 
     wincmd p
 endfunction
@@ -342,20 +343,39 @@ function! s:Direct_Messages()
 endfunction
 
 if !exists(":PublicTwitter")
-    command! PublicTwitter :call <SID>get_timeline("public")
+    command PublicTwitter :call <SID>get_timeline("public")
 endif
 if !exists(":FriendsTwitter")
-    command! FriendsTwitter :call <SID>get_timeline("friends")
+    command FriendsTwitter :call <SID>get_timeline("friends")
 endif
 if !exists(":UserTwitter")
-    command! UserTwitter :call <SID>get_timeline("user")
+    command UserTwitter :call <SID>get_timeline("user")
 endif
 if !exists(":RepliesTwitter")
-    command! RepliesTwitter :call <SID>get_timeline("replies")
+    command RepliesTwitter :call <SID>get_timeline("replies")
 endif
 if !exists(":DMTwitter")
-    command! DMTwitter :call <SID>Direct_Messages()
+    command DMTwitter :call <SID>Direct_Messages()
 endif
+
+" Call Tweetburner API to shorten a URL
+function! s:call_tweetburner(url)
+    call s:get_config_proxy()
+    let output = system('curl -s '.s:proxy.' -d link[url]="'.a:url.'" http://tweetburner.com/links')
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error calling Tweetburner API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+    else
+	return output
+    endif
+endfunction
+
+" if !exists(":Tweetburner")
+"     command -nargs=1 Tweetburner :echo <SID>call_tweetburner("<args>")
+" endif
 
 let &cpo = s:save_cpo
 finish
