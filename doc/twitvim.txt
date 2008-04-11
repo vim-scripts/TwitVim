@@ -38,6 +38,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     Alt-R................................: |TwitVim-A-r|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
+	     :ATweetburner........................: |:ATweetburner|
+	     :PTweetburner........................: |:PTweetburner|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -172,6 +174,18 @@ service at http://www.twitter.com.
 	prompt you to enter a URL. The short URL is then inserted into the
 	current buffer at the current position.
 
+	:ATweetburner					*:ATweetburner*
+	:ATweetburner {url}
+
+	Same as :Tweetburner but appends, i.e. inserts after the current
+	position instead of at the current position,  the short URL instead.
+
+	:PTweetburner					*:PTweetburner*
+	:PTweetburner {url}
+	
+	Same as :Tweetburner but prompts for a tweet on the command line with
+	the short URL already included.
+
 
 ==============================================================================
 5. Timeline Highlighting				*TwitVim-highlight*
@@ -204,6 +218,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.3 : 2008-04-12 * Added more Tweetburner commands.
 	0.2.2 : 2008-04-11 * Added quick reply feature.
 			   * Added Tweetburner support.
 			   * Changed client ident to "from twitvim".

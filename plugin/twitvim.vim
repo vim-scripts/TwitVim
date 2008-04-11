@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.2
+" Version: 0.2.3
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -390,7 +390,7 @@ endfunction
 
 " Invoke Tweetburner to shorten a URL and insert it at the current position in
 " the current buffer.
-function! s:GetTweetburner(url)
+function! s:GetTweetburner(tweetmode, url)
     let url = a:url
 
     " Prompt the user to enter a URL if not provided on :Tweetburner command
@@ -410,12 +410,24 @@ function! s:GetTweetburner(url)
 
     let shorturl = s:call_tweetburner(url)
     if shorturl != ""
-	execute "normal i".shorturl." \<esc>"
+	if a:tweetmode == "cmdline"
+	    call s:CmdLine_Twitter(shorturl." ")
+	elseif a:tweetmode == "append"
+	    execute "normal a".shorturl."\<esc>"
+	else
+	    execute "normal i".shorturl." \<esc>"
+	endif
     endif
 endfunction
 
 if !exists(":Tweetburner")
-    command -nargs=? Tweetburner :call <SID>GetTweetburner("<args>")
+    command -nargs=? Tweetburner :call <SID>GetTweetburner("insert", "<args>")
+endif
+if !exists(":ATweetburner")
+    command -nargs=? ATweetburner :call <SID>GetTweetburner("append", "<args>")
+endif
+if !exists(":PTweetburner")
+    command -nargs=? PTweetburner :call <SID>GetTweetburner("cmdline", "<args>")
 endif
 
 let &cpo = s:save_cpo
