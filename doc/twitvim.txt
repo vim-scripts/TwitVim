@@ -34,7 +34,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :PublicTwitter.......................: |:PublicTwitter|
 	     :DMTwitter...........................: |:DMTwitter|
 	4.3. Mappings.............................: |TwitVim-mappings|
-	     T....................................: |TwitVim-v_T|
+	     Alt-T................................: |TwitVim-A-t|
 	     Alt-R................................: |TwitVim-A-r|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
@@ -150,9 +150,9 @@ service at http://www.twitter.com.
 ------------------------------------------------------------------------------
 4.3. Mappings						*TwitVim-mappings*
 
-	T						*TwitVim-v_T*
+	Alt-T						*TwitVim-A-t*
 
-	In visual mode, the T key posts the highlighted text to Twitter.
+	In visual mode, Alt-T posts the highlighted text to Twitter.
 
 	Alt-R						*TwitVim-A-r*
 
@@ -218,6 +218,11 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.4 : 2008-04-13 * Use <q-args> in Tweetburner commands.
+			   * Improve XML parsing so that order of elements
+			     does not matter.
+			   * Changed T mapping to Alt-T to avoid overriding
+			     the |T| command.
 	0.2.3 : 2008-04-12 * Added more Tweetburner commands.
 	0.2.2 : 2008-04-11 * Added quick reply feature.
 			   * Added Tweetburner support.

@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.3
+" Version: 0.2.4
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 11, 2008
+" Last updated: April 12, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -58,20 +58,42 @@ function! s:get_config()
     return 0
 endfunction
 
+" XML helper functions
+
+" Get the content of the n'th element in a series of elements.
+function! s:xml_get_nth(xmlstr, elem, n)
+    let matchres = matchlist(a:xmlstr, '<'.a:elem.'>\(.\{-}\)</'.a:elem.'>', -1, a:n)
+    return matchres == [] ? "" : matchres[1]
+endfunction
+
+" Get the content of the specified element.
+function! s:xml_get_element(xmlstr, elem)
+    return s:xml_get_nth(a:xmlstr, a:elem, 1)
+endfunction
+
+" Remove any number of the specified element from the string. Used for removing
+" sub-elements so that you can parse the remaining elements safely.
+function! s:xml_remove_elements(xmlstr, elem)
+    return substitute(a:xmlstr, '<'.a:elem.'>.\{-}</'.a:elem.'>', '', "g")
+endfunction
+
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
     if s:twit_buftype == "public" || s:twit_buftype == "friends" || s:twit_buftype == "user"
 
 	" Parse the output from the Twitter update call.
-	let matchres = matchlist(a:output, '<created_at>\(.\{-}\)</created_at>.\{-}<text>\(.\{-}\)</text>.\{-}<screen_name>\(.\{-}\)</screen_name>', -1, 1)
-	if matchres == []
+	let date = s:xml_get_element(a:output, 'created_at')
+	let text = s:xml_get_element(a:output, 'text')
+	let name = s:xml_get_element(a:output, 'screen_name')
+
+	if text == ""
 	    return
 	endif
 
 	let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
 	if twit_bufnr > 0
 	    execute twit_bufnr . "wincmd w"
-	    call append(2, matchres[3].': '.s:convert_entity(matchres[2]).' |'.matchres[1].'|')
+	    call append(2, name.': '.s:convert_entity(text).' |'.date.'|')
 	    wincmd p
 	endif
     endif
@@ -174,7 +196,7 @@ endif
 noremap <SID>Visual y:call <SID>post_twitter(@")<cr>
 noremap <unique> <script> <Plug>TwitvimVisual <SID>Visual
 if !hasmapto('<Plug>TwitvimVisual')
-    vmap <unique> T <Plug>TwitvimVisual
+    vmap <unique> <A-t> <Plug>TwitvimVisual
 endif
 
 " Decode HTML entities. Twitter gives those to us a little weird. For example,
@@ -261,20 +283,26 @@ endfunction
 function! s:show_timeline(timeline)
     let matchcount = 1
     let text = []
+
+    let channel = s:xml_remove_elements(a:timeline, 'item')
+    let title = s:xml_get_element(channel, 'title')
+
+    " The extra stars at the end are for the syntax highlighter to recognize
+    " the title. Then the syntax highlighter hides the stars by coloring them
+    " the same as the background. It is a bad hack.
+    call add(text, title.'*')
+    call add(text, repeat('=', strlen(title)).'*')
+
     while 1
-	let matchres = matchlist(a:timeline, '<title>\(.\{-}\)</title>.\{-}<pubDate>\(.\{-}\)</pubDate>', -1, matchcount)
-	if matchres == []
+	let item = s:xml_get_nth(a:timeline, 'item', matchcount)
+	if item == ""
 	    break
 	endif
-	if matchcount == 1
-	    " The extra stars at the end are for the syntax highlighter to
-	    " recognize the title. Then the syntax highlighter hides the stars
-	    " by coloring them the same as the background. It is a bad hack.
-	    call add(text, matchres[1].'*')
-	    call add(text, repeat('=', strlen(matchres[1])).'*')
-	else
-	    call add(text, s:convert_entity(matchres[1]).' |'.matchres[2].'|')
-	endif
+
+	let title = s:xml_get_element(item, 'title')
+	let pubdate = s:xml_get_element(item, 'pubDate')
+	call add(text, s:convert_entity(title).' |'.pubdate.'|')
+
 	let matchcount += 1
     endwhile
     call s:twitter_wintext(text)
@@ -310,26 +338,33 @@ function! s:get_timeline(tline_name)
     let s:twit_buftype = a:tline_name
 endfunction
 
-" Show direct messages. This requires a bit more string processing than the
-" other timelines.
+" Show direct messages.
 function! s:show_dm(timeline)
     let matchcount = 1
     let text = []
+
+    let channel = s:xml_remove_elements(a:timeline, 'item')
+    let title = s:xml_get_element(channel, 'title')
+
+    " The extra stars at the end are for the syntax highlighter to recognize
+    " the title. Then the syntax highlighter hides the stars by coloring them
+    " the same as the background. It is a bad hack.
+    call add(text, title.'*')
+    call add(text, repeat('=', strlen(title)).'*')
+
     while 1
-	let matchres = matchlist(a:timeline, '<title>\(.\{-}\)</title>.\{-}<description>\(.\{-}\)</description>.\{-}<pubDate>\(.\{-}\)</pubDate>', -1, matchcount)
-	if matchres == []
+	let item = s:xml_get_nth(a:timeline, 'item', matchcount)
+	if item == ""
 	    break
 	endif
-	if matchcount == 1
-	    " The extra stars at the end are for the syntax highlighter to
-	    " recognize the title. Then the syntax highlighter hides the stars
-	    " by coloring them the same as the background. It is a bad hack.
-	    call add(text, matchres[1].'*')
-	    call add(text, repeat('=', strlen(matchres[1])).'*')
-	else
-	    let sender = substitute(matchres[1], '^Message from \(\S\+\) to \S\+$', '\1', '')
-	    call add(text, sender.": ".s:convert_entity(matchres[2]).' |'.matchres[3].'|')
-	endif
+
+	let title = s:xml_get_element(item, 'title')
+	let desc = s:xml_get_element(item, 'description')
+	let pubdate = s:xml_get_element(item, 'pubDate')
+
+	let sender = substitute(title, '^Message from \(\S\+\) to \S\+$', '\1', '')
+	call add(text, sender.": ".s:convert_entity(desc).' |'.pubdate.'|')
+
 	let matchcount += 1
     endwhile
     call s:twitter_wintext(text)
@@ -421,13 +456,13 @@ function! s:GetTweetburner(tweetmode, url)
 endfunction
 
 if !exists(":Tweetburner")
-    command -nargs=? Tweetburner :call <SID>GetTweetburner("insert", "<args>")
+    command -nargs=? Tweetburner :call <SID>GetTweetburner("insert", <q-args>)
 endif
 if !exists(":ATweetburner")
-    command -nargs=? ATweetburner :call <SID>GetTweetburner("append", "<args>")
+    command -nargs=? ATweetburner :call <SID>GetTweetburner("append", <q-args>)
 endif
 if !exists(":PTweetburner")
-    command -nargs=? PTweetburner :call <SID>GetTweetburner("cmdline", "<args>")
+    command -nargs=? PTweetburner :call <SID>GetTweetburner("cmdline", <q-args>)
 endif
 
 let &cpo = s:save_cpo
