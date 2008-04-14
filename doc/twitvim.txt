@@ -218,6 +218,11 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.5 : 2008-04-14 * Escape the "+" character in sent tweets.
+			   * Added Perl code to convert Twitter timestamps to
+			     local time and simplify them.
+			   * Fix for timestamp highlight when the "|"
+			     character appears in a tweet.
 	0.2.4 : 2008-04-13 * Use <q-args> in Tweetburner commands.
 			   * Improve XML parsing so that order of elements
 			     does not matter.

@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.4
+" Version: 0.2.5
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 12, 2008
+" Last updated: April 14, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -24,6 +24,12 @@ set cpo&vim
 
 let s:proxy = ""
 let s:login = ""
+
+" If true, disable the Perl code that simplifies and localizes Twitter
+" timestamps.
+if !exists('g:twitvim_disable_simple_time')
+    let g:twitvim_disable_simple_time = 0
+endif
 
 " The extended character limit is 246. Twitter will display a tweet longer than
 " 140 characters in truncated form with a link to the full tweet. If that is
@@ -58,7 +64,7 @@ function! s:get_config()
     return 0
 endfunction
 
-" XML helper functions
+" === XML helper functions ===
 
 " Get the content of the n'th element in a series of elements.
 function! s:xml_get_nth(xmlstr, elem, n)
@@ -77,12 +83,82 @@ function! s:xml_remove_elements(xmlstr, elem)
     return substitute(a:xmlstr, '<'.a:elem.'>.\{-}</'.a:elem.'>', '', "g")
 endfunction
 
+" === XML helper functions ===
+
+" === Perl time string parser ===
+
+if has('perl') && !g:twitvim_disable_simple_time
+    function s:def_perl_time_funcs()
+	perl <<EOF
+use Time::Local;
+use POSIX qw(strftime);
+
+# Convert abbreviated month name to month number.
+sub twitvim_conv_month {
+    my $monthstr = shift;
+    my @months = qw(jan feb mar apr may jun jul aug sep oct nov dec);
+    for my $mon (0..11) {
+	$months[$mon] eq lc($monthstr) and return $mon;
+    }
+    undef;
+}
+
+# Parse time string in Twitter format.
+sub twitvim_parse_time {
+    my $timestr = shift;
+    # This timestamp format is used by Twitter in timelines.
+    if ($timestr =~ /^\w+,\s+(\d+)\s+(\w+)\s+(\d+)\s+(\d+):(\d+):(\d+)\s+\+0000$/) {
+	my $mon = twitvim_conv_month($2);
+	defined $mon or return undef;
+	return timegm($6, $5, $4, $1, $mon, $3);
+    }
+    # This timestamp format is used by Twitter in response to an update.
+    elsif ($timestr =~ /^\w+\s+(\w+)\s+(\d+)\s+(\d+):(\d+):(\d+)\s+\+0000\s+(\d+)$/) {
+	my $mon = twitvim_conv_month($1);
+	defined $mon or return undef;
+	return timegm($5, $4, $3, $2, $mon, $6);
+    }
+    else {
+	return undef;
+    }
+}
+
+# Convert the Twitter timestamp to local time and simplify it.
+sub twitvim_new_time {
+    my $timestr = shift;
+    my $time = twitvim_parse_time($timestr);
+    defined $time ? strftime("%I:%M %p %b %d, %Y", localtime($time)) : $timestr;
+}
+EOF
+    endfunction
+
+    call s:def_perl_time_funcs()
+
+    " Wrapper for the Twitter timestamp converter.
+    function s:perl_time(timestr)
+	execute 'perl VIM::DoCommand("let newtime = \"".twitvim_new_time("'.a:timestr.'")."\"")'
+	return newtime
+    endfunction
+endif
+
+" Simplify the time string. Do this only if the Perl interface is enabled and
+" if we have not disabled the feature.
+function s:time_filter(timestr)
+    let s = a:timestr
+    if has('perl') && !g:twitvim_disable_simple_time
+	let s = s:perl_time(s)
+    endif
+    return s
+endfunction
+
+" === Perl time string parser ===
+
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
     if s:twit_buftype == "public" || s:twit_buftype == "friends" || s:twit_buftype == "user"
 
 	" Parse the output from the Twitter update call.
-	let date = s:xml_get_element(a:output, 'created_at')
+	let date = s:time_filter(s:xml_get_element(a:output, 'created_at'))
 	let text = s:xml_get_element(a:output, 'text')
 	let name = s:xml_get_element(a:output, 'screen_name')
 
@@ -135,6 +211,7 @@ function! s:post_twitter(mesg)
 	let mesg = substitute(mesg, '%', '%25', "g")
 	let mesg = substitute(mesg, '"', '%22', "g")
 	let mesg = substitute(mesg, '&', '%26', "g")
+	let mesg = substitute(mesg, '+', '%2B', "g")
 
 	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.
 		    \mesg.'" '.s:twupdate)
@@ -238,7 +315,7 @@ function! s:twitter_win()
 	    syntax match twitterUser /^.\{-1,}:/
 
 	    " Use the bars to recognize the time but hide the bars.
-	    syntax match twitterTime /|.\{-1,}|$/ contains=twitterTimeBar
+	    syntax match twitterTime /|[^|]\+|$/ contains=twitterTimeBar
 	    syntax match twitterTimeBar /|/ contained
 
 	    " Use the extra star at the end to recognize the title but hide the
@@ -300,7 +377,8 @@ function! s:show_timeline(timeline)
 	endif
 
 	let title = s:xml_get_element(item, 'title')
-	let pubdate = s:xml_get_element(item, 'pubDate')
+	let pubdate = s:time_filter(s:xml_get_element(item, 'pubDate'))
+
 	call add(text, s:convert_entity(title).' |'.pubdate.'|')
 
 	let matchcount += 1
@@ -360,7 +438,7 @@ function! s:show_dm(timeline)
 
 	let title = s:xml_get_element(item, 'title')
 	let desc = s:xml_get_element(item, 'description')
-	let pubdate = s:xml_get_element(item, 'pubDate')
+	let pubdate = s:time_filter(s:xml_get_element(item, 'pubDate'))
 
 	let sender = substitute(title, '^Message from \(\S\+\) to \S\+$', '\1', '')
 	call add(text, sender.": ".s:convert_entity(desc).' |'.pubdate.'|')
