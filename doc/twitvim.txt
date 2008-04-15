@@ -40,6 +40,12 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
 	     :PTweetburner........................: |:PTweetburner|
+	     :Snipurl.............................: |:Snipurl|
+	     :ASnipurl............................: |:ASnipurl|
+	     :PSnipurl............................: |:PSnipurl|
+	     :Metamark............................: |:Metamark|
+	     :AMetamark...........................: |:AMetamark|
+	     :PMetamark...........................: |:PMetamark|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -184,7 +190,55 @@ service at http://www.twitter.com.
 	:PTweetburner {url}
 	
 	Same as :Tweetburner but prompts for a tweet on the command line with
-	the short URL already included.
+	the short URL already inserted.
+
+
+	:Snipurl					*:Snipurl*
+	:Snipurl {url}
+
+	SnipURL is a URL forwarding and shortening service. See
+	http://www.snipurl.com/
+
+	This command calls the SnipURL API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:ASnipurl					*:ASnipurl*
+	:ASnipurl {url}
+
+	Same as :Snipurl but appends, i.e. inserts after the current
+	position instead of at the current position,  the short URL instead.
+
+	:PSnipurl					*:PSnipurl*
+	:PSnipurl {url}
+	
+	Same as :Snipurl but prompts for a tweet on the command line with
+	the short URL already inserted.
+
+
+	:Metamark					*:Metamark*
+	:Metamark {url}
+
+	Metamark is a URL forwarding and shortening service. See
+	http://metamark.net/
+
+	This command calls the Metamark API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:AMetamark					*:AMetamark*
+	:AMetamark {url}
+
+	Same as :Metamark but appends, i.e. inserts after the current
+	position instead of at the current position,  the short URL instead.
+
+	:PMetamark					*:PMetamark*
+	:PMetamark {url}
+	
+	Same as :Metamark but prompts for a tweet on the command line with
+	the short URL already inserted.
 
 
 ==============================================================================
@@ -218,6 +272,11 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.6 : 2008-04-15 * Delete Twitter buffer to the blackhole register
+			     to avoid stepping on registers unnecessarily.
+			   * Quote login and proxy arguments before sending to
+			     cURL.
+			   * Added support for SnipURL API and Metamark API.
 	0.2.5 : 2008-04-14 * Escape the "+" character in sent tweets.
 			   * Added Perl code to convert Twitter timestamps to
 			     local time and simplify them.

@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.5
+" Version: 0.2.6
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 14, 2008
+" Last updated: April 15, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -41,7 +41,7 @@ let s:twupdate = "http://twitter.com/statuses/update.xml?source=twitvim"
 function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
     " Format is proxysite:proxyport
-    let s:proxy = exists('g:twitvim_proxy') ? "-x " . g:twitvim_proxy : ""
+    let s:proxy = exists('g:twitvim_proxy') ? '-x "'.g:twitvim_proxy.'"': ""
 endfunction
 
 " Get user-config variables twitvim_proxy and twitvim_login.
@@ -51,7 +51,7 @@ function! s:get_config()
     " Get Twitter login info from twitvim_login in .vimrc or _vimrc.
     " Format is username:password
     if exists('g:twitvim_login') && g:twitvim_login != ''
-	let s:login = "-u " . g:twitvim_login
+	let s:login = '-u "'.g:twitvim_login.'"'
     else
 	" Beep and error-highlight 
 	execute "normal \<Esc>"
@@ -349,7 +349,8 @@ function! s:twitter_wintext(text)
 
     " Overwrite the entire buffer.
     " Need to use 'silent' or a 'No lines in buffer' message will appear.
-    silent %delete
+    " Delete to the blackhole register "_ so that we don't affect registers.
+    silent %delete _
     call setline('.', a:text)
     normal 1G
 
@@ -485,7 +486,7 @@ if !exists(":DMTwitter")
     command DMTwitter :call <SID>Direct_Messages()
 endif
 
-" Call Tweetburner API to shorten a URL
+" Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
     call s:get_config_proxy()
     let output = system('curl -s '.s:proxy.' -d link[url]="'.a:url.'" http://tweetburner.com/links')
@@ -501,9 +502,42 @@ function! s:call_tweetburner(url)
     endif
 endfunction
 
-" Invoke Tweetburner to shorten a URL and insert it at the current position in
-" the current buffer.
-function! s:GetTweetburner(tweetmode, url)
+" Call SnipURL API to shorten a URL.
+function! s:call_snipurl(url)
+    call s:get_config_proxy()
+    let output = system('curl -s '.s:proxy.' "http://snipurl.com/site/snip?r=simple&link='.a:url.'"')
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error calling SnipURL API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	" Get rid of extraneous newline at the beginning of SnipURL's output.
+	return substitute(output, '^\n', '', '')
+    endif
+endfunction
+
+" Call Metamark API to shorten a URL.
+function! s:call_metamark(url)
+    call s:get_config_proxy()
+    let output = system('curl -s '.s:proxy.' -d long_url="'.a:url.'" http://metamark.net/api/rest/simple')
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error calling Metamark API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	return output
+    endif
+endfunction
+
+" Invoke URL shortening service to shorten a URL and insert it at the current
+" position in the current buffer.
+function! s:GetShortURL(tweetmode, url, shortfn)
     let url = a:url
 
     " Prompt the user to enter a URL if not provided on :Tweetburner command
@@ -521,7 +555,7 @@ function! s:GetTweetburner(tweetmode, url)
 	return
     endif
 
-    let shorturl = s:call_tweetburner(url)
+    let shorturl = call(function("s:".a:shortfn), [url])
     if shorturl != ""
 	if a:tweetmode == "cmdline"
 	    call s:CmdLine_Twitter(shorturl." ")
@@ -534,13 +568,33 @@ function! s:GetTweetburner(tweetmode, url)
 endfunction
 
 if !exists(":Tweetburner")
-    command -nargs=? Tweetburner :call <SID>GetTweetburner("insert", <q-args>)
+    command -nargs=? Tweetburner :call <SID>GetShortURL("insert", <q-args>, "call_tweetburner")
 endif
 if !exists(":ATweetburner")
-    command -nargs=? ATweetburner :call <SID>GetTweetburner("append", <q-args>)
+    command -nargs=? ATweetburner :call <SID>GetShortURL("append", <q-args>, "call_tweetburner")
 endif
 if !exists(":PTweetburner")
-    command -nargs=? PTweetburner :call <SID>GetTweetburner("cmdline", <q-args>)
+    command -nargs=? PTweetburner :call <SID>GetShortURL("cmdline", <q-args>, "call_tweetburner")
+endif
+
+if !exists(":Snipurl")
+    command -nargs=? Snipurl :call <SID>GetShortURL("insert", <q-args>, "call_snipurl")
+endif
+if !exists(":ASnipurl")
+    command -nargs=? ASnipurl :call <SID>GetShortURL("append", <q-args>, "call_snipurl")
+endif
+if !exists(":PSnipurl")
+    command -nargs=? PSnipurl :call <SID>GetShortURL("cmdline", <q-args>, "call_snipurl")
+endif
+
+if !exists(":Metamark")
+    command -nargs=? Metamark :call <SID>GetShortURL("insert", <q-args>, "call_metamark")
+endif
+if !exists(":AMetamark")
+    command -nargs=? AMetamark :call <SID>GetShortURL("append", <q-args>, "call_metamark")
+endif
+if !exists(":PMetamark")
+    command -nargs=? PMetamark :call <SID>GetShortURL("cmdline", <q-args>, "call_metamark")
 endif
 
 let &cpo = s:save_cpo
