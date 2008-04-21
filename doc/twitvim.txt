@@ -36,6 +36,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	4.3. Mappings.............................: |TwitVim-mappings|
 	     Alt-T................................: |TwitVim-A-t|
 	     Alt-R................................: |TwitVim-A-r|
+	     Alt-D................................: |TwitVim-A-d|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
@@ -46,6 +47,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :Metamark............................: |:Metamark|
 	     :AMetamark...........................: |:AMetamark|
 	     :PMetamark...........................: |:PMetamark|
+	     :TinyURL.............................: |:TinyURL|
+	     :ATinyURL............................: |:ATinyURL|
+	     :PTinyURL............................: |:PTinyURL|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -163,8 +167,14 @@ service at http://www.twitter.com.
 	Alt-R						*TwitVim-A-r*
 
 	This mapping is local to the timeline buffer. In the timeline buffer,
-	it starts an @-reply on the command line to the author of the tweet on
-	the current line.
+	it starts composing an @-reply on the command line to the author of
+	the tweet on the current line.
+
+	Alt-D						*TwitVim-A-d*
+
+	This mapping is local to the timeline buffer. In the timeline buffer,
+	it starts composing a direct message on the command line to the author
+	of the tweet on the current line.
 
 ------------------------------------------------------------------------------
 4.4. Utility Commands					*TwitVim-utility*
@@ -241,6 +251,30 @@ service at http://www.twitter.com.
 	the short URL already inserted.
 
 
+	:TinyURL					*:TinyURL*
+	:TinyURL {url}
+
+	TinyURL is a URL forwarding and shortening service. See
+	http://tinyurl.com
+
+	This command calls the TinyURL API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:ATinyURL					*:ATinyURL*
+	:ATinyURL {url}
+
+	Same as :TinyURL but appends, i.e. inserts after the current
+	position instead of at the current position,  the short URL instead.
+
+	:PTinyURL					*:PTinyURL*
+	:PTinyURL {url}
+	
+	Same as :TinyURL but prompts for a tweet on the command line with
+	the short URL already inserted.
+
+
 ==============================================================================
 5. Timeline Highlighting				*TwitVim-highlight*
 
@@ -272,6 +306,8 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.7 : 2008-04-21 * Add support for TinyURL API.
+			   * Add quick direct message feature.
 	0.2.6 : 2008-04-15 * Delete Twitter buffer to the blackhole register
 			     to avoid stepping on registers unnecessarily.
 			   * Quote login and proxy arguments before sending to

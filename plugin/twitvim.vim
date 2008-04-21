@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.6
+" Version: 0.2.7
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -245,14 +245,30 @@ function! s:CmdLine_Twitter(initstr)
     call s:post_twitter(mesg)
 endfunction
 
+" Extract the user name from a line in the timeline.
+function! s:get_user_name(line)
+    let matchres = matchlist(a:line, '^\(\w\+\):')
+    return matchres != [] ? matchres[1] : ""
+endfunction
+
 " This is for a local mapping in the timeline. Start an @-reply on the command
 " line to the author of the tweet on the current line.
 function! s:Quick_Reply()
-    let matchres = matchlist(getline('.'), '^\(\w\+\):')
-    if matchres != []
-	call s:CmdLine_Twitter('@'.matchres[1].' ')
+    let username = s:get_user_name(getline('.'))
+    if username != ""
+	call s:CmdLine_Twitter('@'.username.' ')
     endif
 endfunction
+
+" This is for a local mapping in the timeline. Start a direct message on the
+" command line to the author of the tweet on the current line.
+function! s:Quick_DM()
+    let username = s:get_user_name(getline('.'))
+    if username != ""
+	call s:CmdLine_Twitter('d '.username.' ')
+    endif
+endfunction
+
 
 " Prompt user for tweet.
 if !exists(":PosttoTwitter")
@@ -307,6 +323,9 @@ function! s:twitter_win()
 
 	" Quick reply feature for replying from the timeline.
 	nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
+
+	" Quick DM feature for direct messaging from the timeline.
+	nnoremap <buffer> <silent> <A-d> :call <SID>Quick_DM()<cr>
 
 	" Beautify the Twitter window with syntax highlighting.
 	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
@@ -535,6 +554,22 @@ function! s:call_metamark(url)
     endif
 endfunction
 
+" Call TinyURL API to shorten a URL.
+function! s:call_tinyurl(url)
+    call s:get_config_proxy()
+    let output = system('curl -s '.s:proxy.' http://tinyurl.com/api-create.php?url='.a:url)
+    if v:shell_error != 0
+	echohl ErrorMsg
+	echomsg "Error calling TinyURL API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	return output
+    endif
+endfunction
+
 " Invoke URL shortening service to shorten a URL and insert it at the current
 " position in the current buffer.
 function! s:GetShortURL(tweetmode, url, shortfn)
@@ -595,6 +630,16 @@ if !exists(":AMetamark")
 endif
 if !exists(":PMetamark")
     command -nargs=? PMetamark :call <SID>GetShortURL("cmdline", <q-args>, "call_metamark")
+endif
+
+if !exists(":TinyURL")
+    command -nargs=? TinyURL :call <SID>GetShortURL("insert", <q-args>, "call_tinyurl")
+endif
+if !exists(":ATinyURL")
+    command -nargs=? ATinyURL :call <SID>GetShortURL("append", <q-args>, "call_tinyurl")
+endif
+if !exists(":PTinyURL")
+    command -nargs=? PTinyURL :call <SID>GetShortURL("cmdline", <q-args>, "call_tinyurl")
 endif
 
 let &cpo = s:save_cpo
