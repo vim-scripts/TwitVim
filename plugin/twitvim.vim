@@ -2,14 +2,14 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.8
+" Version: 0.2.9
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 15, 2008
+" Last updated: April 22, 2008
 "
-" GetLatestVimScripts: 2204 1 twitvim.vim
+" GetLatestVimScripts: 2204 2 twitvim.vim
 " ==============================================================
 
 " Load this module only once.
@@ -55,6 +55,7 @@ function! s:get_config()
     else
 	" Beep and error-highlight 
 	execute "normal \<Esc>"
+	redraw
 	echohl ErrorMsg
 	echomsg 'Twitter login not set.'
 	    \ 'Please add to .vimrc: let twitvim_login="USER:PASS"'
@@ -83,7 +84,7 @@ function! s:xml_remove_elements(xmlstr, elem)
     return substitute(a:xmlstr, '<'.a:elem.'>.\{-}</'.a:elem.'>', '', "g")
 endfunction
 
-" === XML helper functions ===
+" === End of XML helper functions ===
 
 " === Perl time string parser ===
 
@@ -151,7 +152,7 @@ function s:time_filter(timestr)
     return s
 endfunction
 
-" === Perl time string parser ===
+" === End of Perl time string parser ===
 
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
@@ -177,13 +178,7 @@ endfunction
 
 " URL-encode a string.
 function! s:url_encode(str)
-    let str = a:str
-    let str = substitute(str, '%', '%25', "g")
-    let str = substitute(str, '"', '%22', "g")
-    let str = substitute(str, '&', '%26', "g")
-    let str = substitute(str, '+', '%2B', "g")
-    let str = substitute(str, '?', '%3F', "g")
-    return str
+    return substitute(a:str, '[^a-zA-Z_-]', '\=printf("%%%02X", char2nr(submatch(0)))', 'g')
 endfunction
 
 " Common code to post a message to Twitter.
@@ -209,21 +204,22 @@ function! s:post_twitter(mesg)
     " URL-encoding the special characters because URL-encoding increases the
     " string length.
     if strlen(mesg) > s:char_limit
+	redraw
 	echohl WarningMsg
 	echo "Your tweet has" strlen(mesg) - s:char_limit
 	    \ "too many characters. It was not sent."
 	echohl None
     elseif strlen(mesg) < 1
+	redraw
 	echohl WarningMsg
 	echo "Your tweet was empty. It was not sent."
 	echohl None
     else
-	" URL-encode some special characters so they show up verbatim.
-	let mesg = s:url_encode(mesg)
-
-	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.
-		    \mesg.'" '.s:twupdate)
+	redraw
+	echo "Sending update to Twitter..."
+	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.s:url_encode(mesg).'" '.s:twupdate)
 	if v:shell_error != 0
+	    redraw
 	    echohl ErrorMsg
 	    echomsg "Error posting your tweet. Result code: ".v:shell_error
 	    echomsg "Output:"
@@ -231,6 +227,7 @@ function! s:post_twitter(mesg)
 	    echohl None
 	else
 	    call s:add_update(output)
+	    redraw
 	    echo "Your tweet was sent. You used" strlen(mesg) "characters."
 	endif
     endif
@@ -283,10 +280,14 @@ if !exists(":PosttoTwitter")
     command PosttoTwitter :call <SID>CmdLine_Twitter('')
 endif
 
+nnoremenu Plugin.TwitVim.Post\ from\ cmdline :call <SID>CmdLine_Twitter('')<cr>
+
 " Post current line to Twitter.
 if !exists(":CPosttoTwitter")
     command CPosttoTwitter :call <SID>post_twitter(getline('.'))
 endif
+
+nnoremenu Plugin.TwitVim.Post\ current\ line :call <SID>post_twitter(getline('.'))<cr>
 
 " Post entire buffer to Twitter.
 if !exists(":BPosttoTwitter")
@@ -298,7 +299,13 @@ noremap <SID>Visual y:call <SID>post_twitter(@")<cr>
 noremap <unique> <script> <Plug>TwitvimVisual <SID>Visual
 if !hasmapto('<Plug>TwitvimVisual')
     vmap <unique> <A-t> <Plug>TwitvimVisual
+
+    " Allow Ctrl-T as an alternative to Alt-T.
+    " Alt-T pulls down the Tools menu if the menu bar is enabled.
+    vmap <unique> <C-t> <Plug>TwitvimVisual
 endif
+
+vmenu Plugin.TwitVim.Post\ selection <Plug>TwitvimVisual
 
 " Decode HTML entities. Twitter gives those to us a little weird. For example,
 " a '<' character comes to us as &amp;lt;
@@ -430,8 +437,11 @@ function! s:get_timeline(tline_name)
     endif
 
     let url_fname = a:tline_name == "replies" ? "replies.rss" : a:tline_name."_timeline.rss"
+    redraw
+    echo "Sending" a:tline_name "timeline request to Twitter..."
     let output = system("curl -s ".s:proxy." ".login." http://twitter.com/statuses/".url_fname)
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error getting Twitter" a:tline_name "timeline. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -442,6 +452,9 @@ function! s:get_timeline(tline_name)
 
     call s:show_timeline(output)
     let s:twit_buftype = a:tline_name
+    redraw
+    " Uppercase the first letter in the timeline name.
+    echo substitute(a:tline_name, '^.', '\u&', '') "timeline updated."
 endfunction
 
 " Show direct messages.
@@ -483,8 +496,11 @@ function! s:Direct_Messages()
 	return -1
     endif
 
+    redraw
+    echo "Sending direct message timeline request to Twitter..."
     let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages.rss")
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error getting Twitter direct messages. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -495,6 +511,8 @@ function! s:Direct_Messages()
 
     call s:show_dm(output)
     let s:twit_buftype = "directmessages"
+    redraw
+    echo "Direct message timeline updated."
 endfunction
 
 if !exists(":PublicTwitter")
@@ -513,11 +531,21 @@ if !exists(":DMTwitter")
     command DMTwitter :call <SID>Direct_Messages()
 endif
 
+nnoremenu Plugin.TwitVim.-Sep1- :
+nnoremenu Plugin.TwitVim.&Friends\ Timeline :call <SID>get_timeline("friends")<cr>
+nnoremenu Plugin.TwitVim.&User\ Timeline :call <SID>get_timeline("user")<cr>
+nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies")<cr>
+nnoremenu Plugin.TwitVim.&Direct\ Messages :call <SID>Direct_Messages()<cr>
+nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public")<cr>
+
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
     call s:get_config_proxy()
+    redraw
+    echo "Sending request to Tweetburner..."
     let output = system('curl -s '.s:proxy.' -d link[url]="'.s:url_encode(a:url).'" http://tweetburner.com/links')
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error calling Tweetburner API. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -525,6 +553,8 @@ function! s:call_tweetburner(url)
 	echohl None
 	return ""
     else
+	redraw
+	echo "Received response from Tweetburner."
 	return output
     endif
 endfunction
@@ -532,8 +562,11 @@ endfunction
 " Call SnipURL API to shorten a URL.
 function! s:call_snipurl(url)
     call s:get_config_proxy()
+    redraw
+    echo "Sending request to SnipURL..."
     let output = system('curl -s '.s:proxy.' "http://snipurl.com/site/snip?r=simple&link='.s:url_encode(a:url).'"')
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error calling SnipURL API. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -541,6 +574,8 @@ function! s:call_snipurl(url)
 	echohl None
 	return ""
     else
+	redraw
+	echo "Received response from SnipURL."
 	" Get rid of extraneous newline at the beginning of SnipURL's output.
 	return substitute(output, '^\n', '', '')
     endif
@@ -549,8 +584,11 @@ endfunction
 " Call Metamark API to shorten a URL.
 function! s:call_metamark(url)
     call s:get_config_proxy()
+    redraw
+    echo "Sending request to Metamark..."
     let output = system('curl -s '.s:proxy.' -d long_url="'.s:url_encode(a:url).'" http://metamark.net/api/rest/simple')
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error calling Metamark API. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -558,6 +596,8 @@ function! s:call_metamark(url)
 	echohl None
 	return ""
     else
+	redraw
+	echo "Received response from Metamark."
 	return output
     endif
 endfunction
@@ -565,8 +605,11 @@ endfunction
 " Call TinyURL API to shorten a URL.
 function! s:call_tinyurl(url)
     call s:get_config_proxy()
+    redraw
+    echo "Sending request to TinyURL..."
     let output = system('curl -s '.s:proxy.' "http://tinyurl.com/api-create.php?url='.a:url.'"')
     if v:shell_error != 0
+	redraw
 	echohl ErrorMsg
 	echomsg "Error calling TinyURL API. Result code: ".v:shell_error
 	echomsg "Output:"
@@ -574,6 +617,29 @@ function! s:call_tinyurl(url)
 	echohl None
 	return ""
     else
+	redraw
+	echo "Received response from TinyURL."
+	return output
+    endif
+endfunction
+
+" Call urlTea API to shorten a URL.
+function! s:call_urltea(url)
+    call s:get_config_proxy()
+    redraw
+    echo "Sending request to urlTea..."
+    let output = system('curl -s '.s:proxy.' "http://urltea.com/api/text/?url='.s:url_encode(a:url).'"')
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error calling urlTea API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	redraw
+	echo "Received response from urlTea."
 	return output
     endif
 endfunction
@@ -592,6 +658,7 @@ function! s:GetShortURL(tweetmode, url, shortfn)
     endif
 
     if url == ""
+	redraw
 	echohl WarningMsg
 	echo "No URL provided."
 	echohl None
@@ -648,6 +715,16 @@ if !exists(":ATinyURL")
 endif
 if !exists(":PTinyURL")
     command -nargs=? PTinyURL :call <SID>GetShortURL("cmdline", <q-args>, "call_tinyurl")
+endif
+
+if !exists(":UrlTea")
+    command -nargs=? UrlTea :call <SID>GetShortURL("insert", <q-args>, "call_urltea")
+endif
+if !exists(":AUrlTea")
+    command -nargs=? AUrlTea :call <SID>GetShortURL("append", <q-args>, "call_urltea")
+endif
+if !exists(":PUrlTea")
+    command -nargs=? PUrlTea :call <SID>GetShortURL("cmdline", <q-args>, "call_urltea")
 endif
 
 let &cpo = s:save_cpo

@@ -35,6 +35,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :DMTwitter...........................: |:DMTwitter|
 	4.3. Mappings.............................: |TwitVim-mappings|
 	     Alt-T................................: |TwitVim-A-t|
+	     Ctrl-T...............................: |TwitVim-C-t|
 	     Alt-R................................: |TwitVim-A-r|
 	     Alt-D................................: |TwitVim-A-d|
 	4.4. Utility Commands.....................: |TwitVim-utility|
@@ -50,6 +51,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :TinyURL.............................: |:TinyURL|
 	     :ATinyURL............................: |:ATinyURL|
 	     :PTinyURL............................: |:PTinyURL|
+	     :UrlTea..............................: |:UrlTea|
+	     :AUrlTea.............................: |:AUrlTea|
+	     :PUrlTea.............................: |:PUrlTea|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -164,6 +168,11 @@ service at http://www.twitter.com.
 
 	In visual mode, Alt-T posts the highlighted text to Twitter.
 
+	Ctrl-T						*TwitVim-C-t*
+
+	This is an alternative to the Alt-T mapping. If the menu bar is
+	enabled, Alt-T pulls down the Tools menu. So use this mapping instead.
+
 	Alt-R						*TwitVim-A-r*
 
 	This mapping is local to the timeline buffer. In the timeline buffer,
@@ -275,6 +284,30 @@ service at http://www.twitter.com.
 	the short URL already inserted.
 
 
+	:UrlTea						*:UrlTea*
+	:UrlTea {url}
+
+	UrlTea is a URL forwarding and shortening service. See
+	http://urltea.com
+
+	This command calls the UrlTea API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:AUrlTea					*:AUrlTea*
+	:AUrlTea {url}
+
+	Same as :UrlTea but appends, i.e. inserts after the current
+	position instead of at the current position,  the short URL instead.
+
+	:PUrlTea					*:PUrlTea*
+	:PUrlTea {url}
+	
+	Same as :UrlTea but prompts for a tweet on the command line with
+	the short URL already inserted.
+
+
 ==============================================================================
 5. Timeline Highlighting				*TwitVim-highlight*
 
@@ -306,6 +339,12 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.9 : 2008-04-23 * Added some status messages.
+			   * Added menu items under Plugin menu.
+			   * Allow Ctrl-T as an alternative to Alt-T to avoid
+			     conflict with the menu bar.
+			   * Added support for UrlTea API.
+			   * Generalize URL encoding to all non-alpha chars.
 	0.2.8 : 2008-04-22 * Encode URLs sent to URL-shortening services.
 	0.2.7 : 2008-04-21 * Add support for TinyURL API.
 			   * Add quick direct message feature.
