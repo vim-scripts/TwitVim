@@ -306,6 +306,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.8 : 2008-04-22 * Encode URLs sent to URL-shortening services.
 	0.2.7 : 2008-04-21 * Add support for TinyURL API.
 			   * Add quick direct message feature.
 	0.2.6 : 2008-04-15 * Delete Twitter buffer to the blackhole register

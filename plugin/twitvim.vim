@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.7
+" Version: 0.2.8
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -175,6 +175,17 @@ function! s:add_update(output)
     endif
 endfunction
 
+" URL-encode a string.
+function! s:url_encode(str)
+    let str = a:str
+    let str = substitute(str, '%', '%25', "g")
+    let str = substitute(str, '"', '%22', "g")
+    let str = substitute(str, '&', '%26', "g")
+    let str = substitute(str, '+', '%2B', "g")
+    let str = substitute(str, '?', '%3F', "g")
+    return str
+endfunction
+
 " Common code to post a message to Twitter.
 function! s:post_twitter(mesg)
     " Get user-config variables twitvim_proxy and twitvim_login.
@@ -208,10 +219,7 @@ function! s:post_twitter(mesg)
 	echohl None
     else
 	" URL-encode some special characters so they show up verbatim.
-	let mesg = substitute(mesg, '%', '%25', "g")
-	let mesg = substitute(mesg, '"', '%22', "g")
-	let mesg = substitute(mesg, '&', '%26', "g")
-	let mesg = substitute(mesg, '+', '%2B', "g")
+	let mesg = s:url_encode(mesg)
 
 	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.
 		    \mesg.'" '.s:twupdate)
@@ -508,7 +516,7 @@ endif
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
     call s:get_config_proxy()
-    let output = system('curl -s '.s:proxy.' -d link[url]="'.a:url.'" http://tweetburner.com/links')
+    let output = system('curl -s '.s:proxy.' -d link[url]="'.s:url_encode(a:url).'" http://tweetburner.com/links')
     if v:shell_error != 0
 	echohl ErrorMsg
 	echomsg "Error calling Tweetburner API. Result code: ".v:shell_error
@@ -524,7 +532,7 @@ endfunction
 " Call SnipURL API to shorten a URL.
 function! s:call_snipurl(url)
     call s:get_config_proxy()
-    let output = system('curl -s '.s:proxy.' "http://snipurl.com/site/snip?r=simple&link='.a:url.'"')
+    let output = system('curl -s '.s:proxy.' "http://snipurl.com/site/snip?r=simple&link='.s:url_encode(a:url).'"')
     if v:shell_error != 0
 	echohl ErrorMsg
 	echomsg "Error calling SnipURL API. Result code: ".v:shell_error
@@ -541,7 +549,7 @@ endfunction
 " Call Metamark API to shorten a URL.
 function! s:call_metamark(url)
     call s:get_config_proxy()
-    let output = system('curl -s '.s:proxy.' -d long_url="'.a:url.'" http://metamark.net/api/rest/simple')
+    let output = system('curl -s '.s:proxy.' -d long_url="'.s:url_encode(a:url).'" http://metamark.net/api/rest/simple')
     if v:shell_error != 0
 	echohl ErrorMsg
 	echomsg "Error calling Metamark API. Result code: ".v:shell_error
@@ -557,7 +565,7 @@ endfunction
 " Call TinyURL API to shorten a URL.
 function! s:call_tinyurl(url)
     call s:get_config_proxy()
-    let output = system('curl -s '.s:proxy.' http://tinyurl.com/api-create.php?url='.a:url)
+    let output = system('curl -s '.s:proxy.' "http://tinyurl.com/api-create.php?url='.a:url.'"')
     if v:shell_error != 0
 	echohl ErrorMsg
 	echomsg "Error calling TinyURL API. Result code: ".v:shell_error
