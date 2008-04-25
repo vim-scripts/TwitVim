@@ -22,6 +22,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	   twitvim.vim............................: |TwitVim-add|
 	   twitvim_login..........................: |twitvim_login|
 	   twitvim_proxy..........................: |twitvim_proxy|
+	   twitvim_proxy_login....................: |twitvim_proxy_login|
 	4. Manual.................................: |TwitVim-manual|
 	4.1. Update Commands......................: |TwitVim-update-commands|
 	     :PosttoTwitter.......................: |:PosttoTwitter|
@@ -107,6 +108,17 @@ service at http://www.twitter.com.
 
 	Replace proxyserver with the address of the HTTP proxy and proxyport
 	with the port number of the HTTP proxy.
+
+
+	5. twitvim_proxy_login				*twitvim_proxy_login*
+
+	If the HTTP proxy requires authentication, add the following to your
+	vimrc:
+
+		let twitvim_proxy_login = "proxyuser:proxypassword"
+
+	Where proxyuser is your proxy user and proxypassword is your proxy
+	password.
 
 
 ==============================================================================
@@ -339,6 +351,10 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.10 : 2008-04-25 * Shortened snipurl.com to snipr.com
+			    * Added support for proxy authentication.
+			    * Handle Perl module load failure. Not that I
+			      expect those modules to ever be missing.
 	0.2.9 : 2008-04-23 * Added some status messages.
 			   * Added menu items under Plugin menu.
 			   * Allow Ctrl-T as an alternative to Alt-T to avoid

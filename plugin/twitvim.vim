@@ -2,14 +2,14 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.9
+" Version: 0.2.10
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 22, 2008
+" Last updated: April 25, 2008
 "
-" GetLatestVimScripts: 2204 2 twitvim.vim
+" GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
 
 " Load this module only once.
@@ -42,6 +42,9 @@ function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
     " Format is proxysite:proxyport
     let s:proxy = exists('g:twitvim_proxy') ? '-x "'.g:twitvim_proxy.'"': ""
+    " If twitvim_proxy_login exists, use that as the proxy login.
+    " Format is proxyuser:proxypassword
+    let s:proxy .= exists('g:twitvim_proxy_login') ? ' -U "'.g:twitvim_proxy_login.'"' : ''
 endfunction
 
 " Get user-config variables twitvim_proxy and twitvim_login.
@@ -91,8 +94,14 @@ endfunction
 if has('perl') && !g:twitvim_disable_simple_time
     function s:def_perl_time_funcs()
 	perl <<EOF
-use Time::Local;
-use POSIX qw(strftime);
+eval {
+    require Time::Local; Time::Local->import;
+    require POSIX; POSIX->import(qw(strftime));
+};
+if ($@) {
+    # Play it safe and disable this feature if modules fail to load.
+    VIM::DoCommand('let g:twitvim_disable_simple_time = 1');
+}
 
 # Convert abbreviated month name to month number.
 sub twitvim_conv_month {
@@ -564,7 +573,7 @@ function! s:call_snipurl(url)
     call s:get_config_proxy()
     redraw
     echo "Sending request to SnipURL..."
-    let output = system('curl -s '.s:proxy.' "http://snipurl.com/site/snip?r=simple&link='.s:url_encode(a:url).'"')
+    let output = system('curl -s '.s:proxy.' "http://snipr.com/site/snip?r=simple&link='.s:url_encode(a:url).'"')
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
