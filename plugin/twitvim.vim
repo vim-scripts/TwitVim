@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.10
+" Version: 0.2.11
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -180,6 +180,7 @@ function! s:add_update(output)
 	if twit_bufnr > 0
 	    execute twit_bufnr . "wincmd w"
 	    call append(2, name.': '.s:convert_entity(text).' |'.date.'|')
+	    normal 1G
 	    wincmd p
 	endif
     endif
@@ -347,9 +348,11 @@ function! s:twitter_win()
 
 	" Quick reply feature for replying from the timeline.
 	nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
+	nnoremap <buffer> <silent> <Leader>r :call <SID>Quick_Reply()<cr>
 
 	" Quick DM feature for direct messaging from the timeline.
 	nnoremap <buffer> <silent> <A-d> :call <SID>Quick_DM()<cr>
+	nnoremap <buffer> <silent> <Leader>d :call <SID>Quick_DM()<cr>
 
 	" Beautify the Twitter window with syntax highlighting.
 	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")

@@ -38,7 +38,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     Alt-T................................: |TwitVim-A-t|
 	     Ctrl-T...............................: |TwitVim-C-t|
 	     Alt-R................................: |TwitVim-A-r|
+	     <Leader>r............................: |TwitVim-Leader-r|
 	     Alt-D................................: |TwitVim-A-d|
+	     <Leader>d............................: |TwitVim-Leader-d|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
@@ -186,16 +188,26 @@ service at http://www.twitter.com.
 	enabled, Alt-T pulls down the Tools menu. So use this mapping instead.
 
 	Alt-R						*TwitVim-A-r*
+	<Leader>r					*TwitVim-Leader-r*
 
 	This mapping is local to the timeline buffer. In the timeline buffer,
 	it starts composing an @-reply on the command line to the author of
 	the tweet on the current line.
 
+	Under Cygwin, Alt-R is not recognized so you can use <Leader>r as an
+	alternative. The <Leader> character defaults to \ (backslash) but see
+	|mapleader| for information on customizing that.
+
 	Alt-D						*TwitVim-A-d*
+	<Leader>d					*TwitVim-Leader-d*
 
 	This mapping is local to the timeline buffer. In the timeline buffer,
 	it starts composing a direct message on the command line to the author
 	of the tweet on the current line.
+
+	Under Cygwin, Alt-D is not recognized so you can use <Leader>d as an
+	alternative. The <Leader> character defaults to \ (backslash) but see
+	|mapleader| for information on customizing that.
 
 ------------------------------------------------------------------------------
 4.4. Utility Commands					*TwitVim-utility*
@@ -351,6 +363,11 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.11 : 2008-05-02 * Scroll to top in timeline window after adding
+			      an update line.
+			    * Add <Leader>r and <Leader>d mappings as
+			      alternative to Alt-R and Alt-D because the
+			      latter are not valid key combos under Cygwin.
 	0.2.10 : 2008-04-25 * Shortened snipurl.com to snipr.com
 			    * Added support for proxy authentication.
 			    * Handle Perl module load failure. Not that I
