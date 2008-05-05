@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.11
+" Version: 0.2.12
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 25, 2008
+" Last updated: May 5, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -44,7 +44,13 @@ function! s:get_config_proxy()
     let s:proxy = exists('g:twitvim_proxy') ? '-x "'.g:twitvim_proxy.'"': ""
     " If twitvim_proxy_login exists, use that as the proxy login.
     " Format is proxyuser:proxypassword
-    let s:proxy .= exists('g:twitvim_proxy_login') ? ' -U "'.g:twitvim_proxy_login.'"' : ''
+    " If twitvim_proxy_login_b64 exists, use that instead. This is the proxy
+    " user:password in base64 encoding.
+    if exists('g:twitvim_proxy_login_b64')
+	let s:proxy .= ' -H "Proxy-Authorization: Basic '.g:twitvim_proxy_login_b64.'"'
+    else
+	let s:proxy .= exists('g:twitvim_proxy_login') ? ' -U "'.g:twitvim_proxy_login.'"' : ''
+    endif
 endfunction
 
 " Get user-config variables twitvim_proxy and twitvim_login.
@@ -53,7 +59,11 @@ function! s:get_config()
 
     " Get Twitter login info from twitvim_login in .vimrc or _vimrc.
     " Format is username:password
-    if exists('g:twitvim_login') && g:twitvim_login != ''
+    " If twitvim_login_b64 exists, use that instead. This is the user:password
+    " in base64 encoding.
+    if exists('g:twitvim_login_b64')
+	let s:login = '-H "Authorization: Basic '.g:twitvim_login_b64.'"'	
+    elseif exists('g:twitvim_login') && g:twitvim_login != ''
 	let s:login = '-u "'.g:twitvim_login.'"'
     else
 	" Beep and error-highlight 

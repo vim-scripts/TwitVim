@@ -23,6 +23,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	   twitvim_login..........................: |twitvim_login|
 	   twitvim_proxy..........................: |twitvim_proxy|
 	   twitvim_proxy_login....................: |twitvim_proxy_login|
+	3.1. Base64-Encoded Login.................: |TwitVim-login-base64|
+	     twitvim_login_b64....................: |twitvim_login_b64|
+	     twitvim_proxy_login_b64..............: |twitvim_proxy_login_b64|
 	4. Manual.................................: |TwitVim-manual|
 	4.1. Update Commands......................: |TwitVim-update-commands|
 	     :PosttoTwitter.......................: |:PosttoTwitter|
@@ -100,6 +103,9 @@ service at http://www.twitter.com.
 	Replace USER with your Twitter user name and PASS with your Twitter
 	password.
 
+	It is possible to avoid having your Twitter password in plaintext in
+	your vimrc. See |TwitVim-login-base64| for details.
+
 
 	4. twitvim_proxy				*twitvim_proxy*
 
@@ -121,6 +127,49 @@ service at http://www.twitter.com.
 
 	Where proxyuser is your proxy user and proxypassword is your proxy
 	password.
+
+	It is possible to avoid having your proxy password in plaintext in
+	your vimrc. See |TwitVim-login-base64| for details.
+
+
+------------------------------------------------------------------------------
+3.1. Base64-Encoded Login				*TwitVim-login-base64*
+
+	For safety purposes, TwitVim allows you to specify your Twitter login
+	and proxy login information preencoded in base64. This is not truly
+	secure as it is not encryption but it can stop casual onlookers
+	from reading off your password when you edit your vimrc.
+
+						*twitvim_login_b64*
+	To do that, set the following in your vimrc:
+
+		let twitvim_login_b64 = "base64string"
+	
+						*twitvim_proxy_login_b64*
+	If your HTTP proxy needs authentication, set the following:
+
+		let twitvim_proxy_login_b64 = "base64string"
+
+
+	Where base64string is your username:password encoded in base64.
+
+
+	An example:
+
+	Let's say Joe User has a Twitter login of "joeuser" and a password of
+	"joepassword". His first step is to encode "joeuser:joepassword" in
+	Base64. He can either use a standalone utility to do that or, in a
+	pinch, he can do the encoding at websites such as the following:
+	http://makcoder.sourceforge.net/demo/base64.php
+	http://www.opinionatedgeek.com/dotnet/tools/Base64Encode/
+
+	The result is: am9ldXNlcjpqb2VwYXNzd29yZA==
+
+	Then he adds the following to his vimrc:
+
+		let twitvim_login_b64 = "am9ldXNlcjpqb2VwYXNzd29yZA=="
+
+	And his setup is ready.
 
 
 ==============================================================================
@@ -363,6 +412,8 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.12 : 2008-05-05 * Allow user to specify Twitter login info and
+			      proxy login info preencoded in base64.
 	0.2.11 : 2008-05-02 * Scroll to top in timeline window after adding
 			      an update line.
 			    * Add <Leader>r and <Leader>d mappings as
