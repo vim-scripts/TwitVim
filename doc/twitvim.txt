@@ -44,6 +44,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     <Leader>r............................: |TwitVim-Leader-r|
 	     Alt-D................................: |TwitVim-A-d|
 	     <Leader>d............................: |TwitVim-Leader-d|
+	     Alt-G................................: |TwitVim-A-g|
+	     <Leader>g............................: |TwitVim-Leader-g|
+	     twitvim_browser_cmd..................: |twitvim_browser_cmd|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
@@ -258,6 +261,23 @@ service at http://www.twitter.com.
 	alternative. The <Leader> character defaults to \ (backslash) but see
 	|mapleader| for information on customizing that.
 
+	Alt-G						*TwitVim-A-g*
+	<Leader>g					*TwitVim-Leader-g*
+
+	This mapping is local to the timeline buffer. It launches the web
+	browser with the URL at the cursor position. If you visually select
+	text before invoking this mapping, it launches the web browser with
+	the selected text.
+
+							*twitvim_browser_cmd*
+	Before using this command, you need to tell TwitVim how to launch your
+	browser. For example, you can add the following to your vimrc:
+
+		let twitvim_browser_cmd = 'firefox.exe'
+
+	Of course, replace firefox.exe with the browser of your choice.
+
+
 ------------------------------------------------------------------------------
 4.4. Utility Commands					*TwitVim-utility*
 
@@ -412,6 +432,8 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.13 : 2008-05-07 * Added mappings to launch web browser on URLs in
+			      timeline.
 	0.2.12 : 2008-05-05 * Allow user to specify Twitter login info and
 			      proxy login info preencoded in base64.
 	0.2.11 : 2008-05-02 * Scroll to top in timeline window after adding

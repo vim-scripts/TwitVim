@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.12
+" Version: 0.2.13
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: May 5, 2008
+" Last updated: May 7, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -327,6 +327,33 @@ endif
 
 vmenu Plugin.TwitVim.Post\ selection <Plug>TwitvimVisual
 
+" Launch web browser with the given URL.
+function! s:launch_browser(url)
+    if !exists('g:twitvim_browser_cmd') || g:twitvim_browser_cmd == ''
+	" Beep and error-highlight 
+	execute "normal \<Esc>"
+	redraw
+	echohl ErrorMsg
+	echomsg 'Browser cmd not set.'
+	    \ 'Please add to .vimrc: let twitvim_browser_cmd="browsercmd"'
+	echohl None
+	return -1
+    endif
+
+    let startcmd = has("win32") || has("win64") ? "!start " : "! "
+    let endcmd = has("unix") ? "&" : ""
+    silent execute startcmd g:twitvim_browser_cmd a:url endcmd
+endfunction
+
+" Launch web browser with the URL at the cursor position. If possible, this
+" function will try to recognize a URL within the current word. Otherwise,
+" it'll just use the whole word.
+function! s:launch_url_cword()
+    let s = expand("<cWORD>")
+    let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
+    call s:launch_browser(s)
+endfunction
+
 " Decode HTML entities. Twitter gives those to us a little weird. For example,
 " a '<' character comes to us as &amp;lt;
 function! s:convert_entity(str)
@@ -363,6 +390,12 @@ function! s:twitter_win()
 	" Quick DM feature for direct messaging from the timeline.
 	nnoremap <buffer> <silent> <A-d> :call <SID>Quick_DM()<cr>
 	nnoremap <buffer> <silent> <Leader>d :call <SID>Quick_DM()<cr>
+
+	" Launch browser with URL in visual selection or at cursor position.
+	nnoremap <buffer> <silent> <A-g> :call <SID>launch_url_cword()<cr>
+	nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword()<cr>
+	vnoremap <buffer> <silent> <A-g> y:call <SID>launch_browser(@")<cr>
+	vnoremap <buffer> <silent> <Leader>g y:call <SID>launch_browser(@")<cr>
 
 	" Beautify the Twitter window with syntax highlighting.
 	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
