@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.13
+" Version: 0.2.14
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: May 7, 2008
+" Last updated: May 12, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -123,7 +123,7 @@ sub twitvim_conv_month {
     undef;
 }
 
-# Parse time string in Twitter format.
+# Parse time string in Twitter RSS or Summize Atom format.
 sub twitvim_parse_time {
     my $timestr = shift;
     # This timestamp format is used by Twitter in timelines.
@@ -137,6 +137,10 @@ sub twitvim_parse_time {
 	my $mon = twitvim_conv_month($1);
 	defined $mon or return undef;
 	return timegm($5, $4, $3, $2, $mon, $6);
+    }
+    # This timestamp format is used by Summize.
+    elsif ($timestr =~ /^(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)Z$/) {
+	return timegm($6, $5, $4, $3, $2 - 1, $1);
     }
     else {
 	return undef;
@@ -407,11 +411,6 @@ function! s:twitter_win()
 	    syntax match twitterTime /|[^|]\+|$/ contains=twitterTimeBar
 	    syntax match twitterTimeBar /|/ contained
 
-	    " Use the extra star at the end to recognize the title but hide the
-	    " star.
-	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
-	    syntax match twitterTitleStar /\*$/ contained
-
 	    " Highlight links in tweets.
 	    syntax match twitterLink "\<http://\S\+"
 	    syntax match twitterLink "\<https://\S\+"
@@ -420,6 +419,11 @@ function! s:twitter_win()
 	    " An @-reply must be preceded by whitespace and ends at a non-word
 	    " character.
 	    syntax match twitterReply "\S\@<!@\w\+"
+
+	    " Use the extra star at the end to recognize the title but hide the
+	    " star.
+	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	    syntax match twitterTitleStar /\*$/ contained
 
 	    highlight default link twitterUser Identifier
 	    highlight default link twitterTime String
@@ -780,6 +784,88 @@ if !exists(":AUrlTea")
 endif
 if !exists(":PUrlTea")
     command -nargs=? PUrlTea :call <SID>GetShortURL("cmdline", <q-args>, "call_urltea")
+endif
+
+" Parse and format search results from Summize API.
+function! s:show_summize(searchres)
+    let text = []
+    let matchcount = 1
+
+    let channel = s:xml_remove_elements(a:searchres, 'entry')
+    let title = s:xml_get_element(channel, 'title')
+
+    " The extra stars at the end are for the syntax highlighter to recognize
+    " the title. Then the syntax highlighter hides the stars by coloring them
+    " the same as the background. It is a bad hack.
+    call add(text, title.'*')
+    call add(text, repeat('=', strlen(title)).'*')
+
+    while 1
+	let item = s:xml_get_nth(a:searchres, 'entry', matchcount)
+	if item == ""
+	    break
+	endif
+
+	let title = s:xml_get_element(item, 'title')
+	let pubdate = s:time_filter(s:xml_get_element(item, 'updated'))
+	let sender = substitute(s:xml_get_element(item, 'uri'), 'http://twitter.com/', '', '')
+
+	call add(text, sender.": ".s:convert_entity(title).' |'.pubdate.'|')
+
+	let matchcount += 1
+    endwhile
+    call s:twitter_wintext(text)
+endfunction
+
+" Query Summize API and retrieve results
+function! s:get_summize(query)
+    call s:get_config_proxy()
+
+    redraw
+    echo "Sending search request to Summize..."
+
+    let output = system("curl -s ".s:proxy.' "http://summize.com/search.atom?rpp=25&q='.s:url_encode(a:query).'"')
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error getting search results from Summize. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return
+    endif
+
+    call s:show_summize(output)
+    let s:twit_buftype = "summize"
+    redraw
+    echo "Received search results from Summize."
+endfunction
+
+" Prompt user for Summize query string if not entered on command line.
+function! s:Summize(query)
+    let query = a:query
+
+    " Prompt the user to enter a query if not provided on :Summize command
+    " line.
+    if query == ""
+	call inputsave()
+	let query = input("Search Summize: ")
+	call inputrestore()
+    endif
+
+    if query == ""
+	redraw
+	echohl WarningMsg
+	echo "No query provided for Summize search."
+	echohl None
+	return
+    endif
+
+    call s:get_summize(query)
+endfunction
+
+if !exists(":Summize")
+    command -nargs=? Summize :call <SID>Summize(<q-args>)
 endif
 
 let &cpo = s:save_cpo

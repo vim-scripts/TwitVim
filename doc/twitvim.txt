@@ -63,6 +63,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :UrlTea..............................: |:UrlTea|
 	     :AUrlTea.............................: |:AUrlTea|
 	     :PUrlTea.............................: |:PUrlTea|
+	     :Summize.............................: |:Summize|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -401,6 +402,20 @@ service at http://www.twitter.com.
 	the short URL already inserted.
 
 
+	:Summize					*:Summize*
+	:Summize {query}
+	
+	Summize is a website that searches Twitter in realtime. See
+	http://summize.com/
+
+	This command calls the Summize API to search for {query}. If {query}
+	is not provided on the command line, the command will prompt you for
+	it. Search results are then displayed in the timeline buffer.
+
+	All of the Summize search operators are supported implicitly. See
+	http://summize.com/operators for a list of search operators.
+
+
 ==============================================================================
 5. Timeline Highlighting				*TwitVim-highlight*
 
@@ -432,6 +447,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.14 : 2008-05-12 * Added support for Summize search API.
 	0.2.13 : 2008-05-07 * Added mappings to launch web browser on URLs in
 			      timeline.
 	0.2.12 : 2008-05-05 * Allow user to specify Twitter login info and
