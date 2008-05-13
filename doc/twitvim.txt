@@ -206,23 +206,36 @@ service at http://www.twitter.com.
 	certain elements in the timeline view. See |TwitVim-highlight| for a
 	list of highlighting groups it uses.
 
+
 	:UserTwitter					*:UserTwitter*
+	:UserTwitter {username}
 
 	This command displays your Twitter timeline.
 
+	If you specify a {username}, this command displays the timeline for
+	that user.
+
+
 	:FriendsTwitter					*:FriendsTwitter*
+	:FriendsTwitter {username}
 
 	This command displays your Twitter timeline with updates from friends
 	merged in.
+
+	If you specify a {username}, this command displays the friends
+	timeline for that user.
+
 
 	:RepliesTwitter					*:RepliesTwitter*
 
 	This command displays a timeline of @-replies that you've received
 	from other Twitter users.
 
+
 	:PublicTwitter					*:PublicTwitter*
 
 	This command displays the public timeline.
+
 
 	:DMTwitter					*:DMTwitter*
 
@@ -269,6 +282,10 @@ service at http://www.twitter.com.
 	browser with the URL at the cursor position. If you visually select
 	text before invoking this mapping, it launches the web browser with
 	the selected text.
+
+	As a special case, if the cursor is on a word of the form @user or
+	user:, TwitVim will display that user's timeline in the timeline
+	buffer. This will not launch the web browser.
 
 							*twitvim_browser_cmd*
 	Before using this command, you need to tell TwitVim how to launch your
@@ -447,6 +464,12 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.15 : 2008-05-13 * Extend :UserTwitter and :FriendsTwitter to show
+			      another user's timeline if argument supplied.
+			    * Extend Alt-G mapping to jump to another user's
+			      timeline if invoked over @user or user:
+			    * Escape special Vim shell characters in URL when
+			      launching web browser.
 	0.2.14 : 2008-05-12 * Added support for Summize search API.
 	0.2.13 : 2008-05-07 * Added mappings to launch web browser on URLs in
 			      timeline.

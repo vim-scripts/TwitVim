@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.14
+" Version: 0.2.15
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: May 12, 2008
+" Last updated: May 13, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -346,14 +346,36 @@ function! s:launch_browser(url)
 
     let startcmd = has("win32") || has("win64") ? "!start " : "! "
     let endcmd = has("unix") ? "&" : ""
-    silent execute startcmd g:twitvim_browser_cmd a:url endcmd
+
+    " Escape characters that have special meaning in the :! command.
+    let url = substitute(a:url, '#\|%', '\\&', 'g')
+
+    redraw
+    echo "Launching web browser..."
+    silent execute startcmd g:twitvim_browser_cmd '"'.url.'"' endcmd
+    redraw
+    echo "Web browser launched."
 endfunction
 
 " Launch web browser with the URL at the cursor position. If possible, this
 " function will try to recognize a URL within the current word. Otherwise,
 " it'll just use the whole word.
+" If the cWORD happens to be @user or user:, show that user's timeline.
 function! s:launch_url_cword()
     let s = expand("<cWORD>")
+
+    let matchres = matchlist(s, '^@\(\w\+\)')
+    if matchres != []
+	call s:get_timeline("user", matchres[1])
+	return
+    endif
+
+    let matchres = matchlist(s, '^\(\w\+\):$')
+    if matchres != []
+	call s:get_timeline("user", matchres[1])
+	return
+    endif
+
     let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
     call s:launch_browser(s)
 endfunction
@@ -481,7 +503,7 @@ function! s:show_timeline(timeline)
 endfunction
 
 " Generic timeline retrieval function.
-function! s:get_timeline(tline_name)
+function! s:get_timeline(tline_name, username)
     let login = ""
     if a:tline_name == "public"
 	" No authentication is needed for public timeline so just get the proxy
@@ -495,7 +517,12 @@ function! s:get_timeline(tline_name)
 	let login = s:login
     endif
 
-    let url_fname = a:tline_name == "replies" ? "replies.rss" : a:tline_name."_timeline.rss"
+    " Twitter API allows you to specify a username for user timeline and
+    " friends timeline to retrieve another user's timeline.
+    let user = a:username == '' ? '' : '/'.a:username
+
+    let url_fname = a:tline_name == "replies" ? "replies.rss" : a:tline_name."_timeline".user.".rss"
+
     redraw
     echo "Sending" a:tline_name "timeline request to Twitter..."
     let output = system("curl -s ".s:proxy." ".login." http://twitter.com/statuses/".url_fname)
@@ -512,8 +539,11 @@ function! s:get_timeline(tline_name)
     call s:show_timeline(output)
     let s:twit_buftype = a:tline_name
     redraw
+
+    let foruser = a:username == '' ? '' : ' for user '.a:username
+
     " Uppercase the first letter in the timeline name.
-    echo substitute(a:tline_name, '^.', '\u&', '') "timeline updated."
+    echo substitute(a:tline_name, '^.', '\u&', '') "timeline updated".foruser."."
 endfunction
 
 " Show direct messages.
@@ -575,27 +605,27 @@ function! s:Direct_Messages()
 endfunction
 
 if !exists(":PublicTwitter")
-    command PublicTwitter :call <SID>get_timeline("public")
+    command PublicTwitter :call <SID>get_timeline("public", '')
 endif
 if !exists(":FriendsTwitter")
-    command FriendsTwitter :call <SID>get_timeline("friends")
+    command -nargs=? FriendsTwitter :call <SID>get_timeline("friends", <q-args>)
 endif
 if !exists(":UserTwitter")
-    command UserTwitter :call <SID>get_timeline("user")
+    command -nargs=? UserTwitter :call <SID>get_timeline("user", <q-args>)
 endif
 if !exists(":RepliesTwitter")
-    command RepliesTwitter :call <SID>get_timeline("replies")
+    command RepliesTwitter :call <SID>get_timeline("replies", '')
 endif
 if !exists(":DMTwitter")
     command DMTwitter :call <SID>Direct_Messages()
 endif
 
 nnoremenu Plugin.TwitVim.-Sep1- :
-nnoremenu Plugin.TwitVim.&Friends\ Timeline :call <SID>get_timeline("friends")<cr>
-nnoremenu Plugin.TwitVim.&User\ Timeline :call <SID>get_timeline("user")<cr>
-nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies")<cr>
+nnoremenu Plugin.TwitVim.&Friends\ Timeline :call <SID>get_timeline("friends", '')<cr>
+nnoremenu Plugin.TwitVim.&User\ Timeline :call <SID>get_timeline("user", '')<cr>
+nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies", '')<cr>
 nnoremenu Plugin.TwitVim.&Direct\ Messages :call <SID>Direct_Messages()<cr>
-nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public")<cr>
+nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public", '')<cr>
 
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
