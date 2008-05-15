@@ -348,7 +348,7 @@ function! s:launch_browser(url)
     let endcmd = has("unix") ? "&" : ""
 
     " Escape characters that have special meaning in the :! command.
-    let url = substitute(a:url, '#\|%', '\\&', 'g')
+    let url = substitute(a:url, '!\|#\|%', '\\&', 'g')
 
     redraw
     echo "Launching web browser..."
