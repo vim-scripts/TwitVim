@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.15
+" Version: 0.2.16
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: May 13, 2008
+" Last updated: May 16, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -352,7 +352,7 @@ function! s:launch_browser(url)
 
     redraw
     echo "Launching web browser..."
-    silent execute startcmd g:twitvim_browser_cmd '"'.url.'"' endcmd
+    silent execute startcmd g:twitvim_browser_cmd url endcmd
     redraw
     echo "Web browser launched."
 endfunction

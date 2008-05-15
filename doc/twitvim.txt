@@ -464,6 +464,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.16 : 2008-05-16 * Removed quotes around browser launch URL.
 	0.2.15 : 2008-05-13 * Extend :UserTwitter and :FriendsTwitter to show
 			      another user's timeline if argument supplied.
 			    * Extend Alt-G mapping to jump to another user's
