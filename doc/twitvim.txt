@@ -1,4 +1,4 @@
-*twitvim.txt*  Post to Twitter from Vim
+*twitvim.txt*  Twitter client for Vim
 
 		      ---------------------------------
 		      TwitVim: A Twitter client for Vim
@@ -9,7 +9,7 @@ Author: Po Shan Cheah <morton@mortonfox.com>
 
 License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	|copyright|) except use "TwitVim" instead of "Vim". No warranty,
-	express of implied. Use at your own risk.
+	express or implied. Use at your own risk.
 
 
 ==============================================================================
@@ -37,6 +37,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :RepliesTwitter......................: |:RepliesTwitter|
 	     :PublicTwitter.......................: |:PublicTwitter|
 	     :DMTwitter...........................: |:DMTwitter|
+	     :DMSentTwitter.......................: |:DMSentTwitter|
 	4.3. Mappings.............................: |TwitVim-mappings|
 	     Alt-T................................: |TwitVim-A-t|
 	     Ctrl-T...............................: |TwitVim-C-t|
@@ -63,6 +64,12 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :UrlTea..............................: |:UrlTea|
 	     :AUrlTea.............................: |:AUrlTea|
 	     :PUrlTea.............................: |:PUrlTea|
+	     :BitLy...............................: |:BitLy|
+	     :ABitLy..............................: |:ABitLy|
+	     :PBitLy..............................: |:PBitLy|
+	     :IsGd................................: |:IsGd|
+	     :AIsGd...............................: |:AIsGd|
+	     :PIsGd...............................: |:PIsGd|
 	     :Summize.............................: |:Summize|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
@@ -96,6 +103,9 @@ service at http://www.twitter.com.
 
 	Add twitvim.vim to your plugins directory. The location depends on
 	your operating system. See |add-global-plugin| for details.
+
+	If you installed from the Vimball (.vba) file, twitvim.vim should
+	already be in its correct place.
 
 
 	3. twitvim_login				*twitvim_login*
@@ -207,17 +217,21 @@ service at http://www.twitter.com.
 	list of highlighting groups it uses.
 
 
-	:UserTwitter					*:UserTwitter*
-	:UserTwitter {username}
+	:[count]UserTwitter				*:UserTwitter*
+	:[count]UserTwitter {username}
 
 	This command displays your Twitter timeline.
 
 	If you specify a {username}, this command displays the timeline for
 	that user.
 
+	If you specify [count], that number is used as the page number. For
+	example, :2UserTwitter displays the second page from your user
+	timeline.
 
-	:FriendsTwitter					*:FriendsTwitter*
-	:FriendsTwitter {username}
+
+	:[count]FriendsTwitter				*:FriendsTwitter*
+	:[count]FriendsTwitter {username}
 
 	This command displays your Twitter timeline with updates from friends
 	merged in.
@@ -225,11 +239,19 @@ service at http://www.twitter.com.
 	If you specify a {username}, this command displays the friends
 	timeline for that user.
 
+	If you specify [count], that number is used as the page number. For
+	example, :2FriendsTwitter displays the second page from your friends
+	timeline.
 
-	:RepliesTwitter					*:RepliesTwitter*
+
+	:[count]RepliesTwitter				*:RepliesTwitter*
 
 	This command displays a timeline of @-replies that you've received
 	from other Twitter users.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2RepliesTwitter displays the second page from your replies
+	timeline.
 
 
 	:PublicTwitter					*:PublicTwitter*
@@ -237,9 +259,23 @@ service at http://www.twitter.com.
 	This command displays the public timeline.
 
 
-	:DMTwitter					*:DMTwitter*
+	:[count]DMTwitter				*:DMTwitter*
 
 	This command displays direct messages that you've received.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2DMTwitter displays the second page from your direct
+	messages timeline.
+
+
+	:[count]DMSentTwitter				*:DMSentTwitter*
+
+	This command displays direct messages that you've sent.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2DMSentTwitter displays the second page from your direct
+	messages sent timeline.
+
 
 ------------------------------------------------------------------------------
 4.3. Mappings						*TwitVim-mappings*
@@ -419,6 +455,54 @@ service at http://www.twitter.com.
 	the short URL already inserted.
 
 
+	:BitLy						*:BitLy*
+	:BitLy {url}
+
+	bit.ly is a URL forwarding and shortening service. See
+	http://bit.ly/go
+
+	This command calls the bit.ly API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:ABitLy						*:ABitLy*
+	:ABitLy {url}
+
+	Same as :BitLy but appends, i.e. inserts after the current
+	position instead of at the current position, the short URL instead.
+
+	:PBitLy						*:PBitLy*
+	:PBitLy {url}
+	
+	Same as :BitLy but prompts for a tweet on the command line with
+	the short URL already inserted.
+
+
+	:IsGd						*:IsGd*
+	:IsGd {url}
+
+	is.gd is a URL forwarding and shortening service. See
+	http://is.gd
+
+	This command calls the is.gd API to get a short URL in place of <url>.
+	If {url} is not provided on the command line, the command will prompt
+	you to enter a URL. The short URL is then inserted into the current
+	buffer at the current position.
+
+	:AIsGd						*:AIsGd*
+	:AIsGd {url}
+
+	Same as :IsGd but appends, i.e. inserts after the current position
+	instead of at the current position, the short URL instead.
+
+	:PIsGd						*:PIsGd*
+	:PIsGd {url}
+	
+	Same as :IsGd but prompts for a tweet on the command line with the
+	short URL already inserted.
+
+
 	:Summize					*:Summize*
 	:Summize {query}
 	
@@ -464,6 +548,10 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.17 : 2008-07-11 * Added command to show DM Sent Timeline.
+			    * Added support for pagination in Friends, User,
+			      Replies, DM, and DM Sent timelines.
+			    * Added support for bit.ly API and is.gd API.
 	0.2.16 : 2008-05-16 * Removed quotes around browser launch URL.
 			    * Escape ! character in browser launch URL.
 	0.2.15 : 2008-05-13 * Extend :UserTwitter and :FriendsTwitter to show

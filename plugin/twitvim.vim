@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.16
+" Version: 0.2.17
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: May 16, 2008
+" Last updated: July 11, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -366,13 +366,13 @@ function! s:launch_url_cword()
 
     let matchres = matchlist(s, '^@\(\w\+\)')
     if matchres != []
-	call s:get_timeline("user", matchres[1])
+	call s:get_timeline("user", matchres[1], 1)
 	return
     endif
 
     let matchres = matchlist(s, '^\(\w\+\):$')
     if matchres != []
-	call s:get_timeline("user", matchres[1])
+	call s:get_timeline("user", matchres[1], 1)
 	return
     endif
 
@@ -473,12 +473,16 @@ function! s:twitter_wintext(text)
 endfunction
 
 " Show a timeline.
-function! s:show_timeline(timeline)
+function! s:show_timeline(timeline, page)
     let matchcount = 1
     let text = []
 
     let channel = s:xml_remove_elements(a:timeline, 'item')
     let title = s:xml_get_element(channel, 'title')
+
+    if a:page > 1
+	let title .= ' (page '.a:page.')'
+    endif
 
     " The extra stars at the end are for the syntax highlighter to recognize
     " the title. Then the syntax highlighter hides the stars by coloring them
@@ -503,7 +507,7 @@ function! s:show_timeline(timeline)
 endfunction
 
 " Generic timeline retrieval function.
-function! s:get_timeline(tline_name, username)
+function! s:get_timeline(tline_name, username, page)
     let login = ""
     if a:tline_name == "public"
 	" No authentication is needed for public timeline so just get the proxy
@@ -523,6 +527,11 @@ function! s:get_timeline(tline_name, username)
 
     let url_fname = a:tline_name == "replies" ? "replies.rss" : a:tline_name."_timeline".user.".rss"
 
+    " Support pagination.
+    if a:page > 1
+	let url_fname .= '?page='.a:page
+    endif
+
     redraw
     echo "Sending" a:tline_name "timeline request to Twitter..."
     let output = system("curl -s ".s:proxy." ".login." http://twitter.com/statuses/".url_fname)
@@ -536,7 +545,7 @@ function! s:get_timeline(tline_name, username)
 	return
     endif
 
-    call s:show_timeline(output)
+    call s:show_timeline(output, a:page)
     let s:twit_buftype = a:tline_name
     redraw
 
@@ -546,13 +555,17 @@ function! s:get_timeline(tline_name, username)
     echo substitute(a:tline_name, '^.', '\u&', '') "timeline updated".foruser."."
 endfunction
 
-" Show direct messages.
-function! s:show_dm(timeline)
+" Show direct message sent or received by user. First argument should be 'sent'
+" or 'received' depending on which timeline we are displaying.
+function! s:show_dm_xml(sent_or_recv, timeline, page)
     let matchcount = 1
     let text = []
 
-    let channel = s:xml_remove_elements(a:timeline, 'item')
-    let title = s:xml_get_element(channel, 'title')
+    let title = 'Direct messages '.a:sent_or_recv
+
+    if a:page > 1
+	let title .= ' (page '.a:page.')'
+    endif
 
     " The extra stars at the end are for the syntax highlighter to recognize
     " the title. Then the syntax highlighter hides the stars by coloring them
@@ -561,17 +574,16 @@ function! s:show_dm(timeline)
     call add(text, repeat('=', strlen(title)).'*')
 
     while 1
-	let item = s:xml_get_nth(a:timeline, 'item', matchcount)
+	let item = s:xml_get_nth(a:timeline, 'direct_message', matchcount)
 	if item == ""
 	    break
 	endif
 
-	let title = s:xml_get_element(item, 'title')
-	let desc = s:xml_get_element(item, 'description')
-	let pubdate = s:time_filter(s:xml_get_element(item, 'pubDate'))
+	let user = s:xml_get_element(item, a:sent_or_recv == 'sent' ? 'recipient_screen_name' : 'sender_screen_name')
+	let mesg = s:xml_get_element(item, 'text')
+	let date = s:time_filter(s:xml_get_element(item, 'created_at'))
 
-	let sender = substitute(title, '^Message from \(\S\+\) to \S\+$', '\1', '')
-	call add(text, sender.": ".s:convert_entity(desc).' |'.pubdate.'|')
+	call add(text, user.": ".s:convert_entity(mesg).' |'.date.'|')
 
 	let matchcount += 1
     endwhile
@@ -579,15 +591,21 @@ function! s:show_dm(timeline)
 endfunction
 
 " Get direct messages sent to user.
-function! s:Direct_Messages()
+function! s:Direct_Messages(page)
     let rc = s:get_config()
     if rc < 0
 	return -1
     endif
 
+    " Support pagination.
+    let pagearg = ''
+    if a:page > 1
+	let pagearg = '?page='.a:page
+    endif
+
     redraw
     echo "Sending direct message timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages.rss")
+    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages.xml".pagearg)
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
@@ -598,34 +616,70 @@ function! s:Direct_Messages()
 	return
     endif
 
-    call s:show_dm(output)
+    call s:show_dm_xml('received', output, a:page)
     let s:twit_buftype = "directmessages"
     redraw
     echo "Direct message timeline updated."
 endfunction
 
+" Get direct messages sent by user.
+function! s:Direct_Messages_Sent(page)
+    let rc = s:get_config()
+    if rc < 0
+	return -1
+    endif
+
+    " Support pagination.
+    let pagearg = ''
+    if a:page > 1
+	let pagearg = '?page='.a:page
+    endif
+
+    redraw
+    echo "Sending direct messages sent timeline request to Twitter..."
+    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages/sent.xml".pagearg)
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error getting Twitter direct messages sent timeline. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return
+    endif
+
+    call s:show_dm_xml('sent', output, a:page)
+    let s:twit_buftype = "directmessages"
+    redraw
+    echo "Direct messages sent timeline updated."
+endfunction
+
 if !exists(":PublicTwitter")
-    command PublicTwitter :call <SID>get_timeline("public", '')
+    command PublicTwitter :call <SID>get_timeline("public", '', 1)
 endif
 if !exists(":FriendsTwitter")
-    command -nargs=? FriendsTwitter :call <SID>get_timeline("friends", <q-args>)
+    command -count=1 -nargs=? FriendsTwitter :call <SID>get_timeline("friends", <q-args>, <count>)
 endif
 if !exists(":UserTwitter")
-    command -nargs=? UserTwitter :call <SID>get_timeline("user", <q-args>)
+    command -count=1 -nargs=? UserTwitter :call <SID>get_timeline("user", <q-args>, <count>)
 endif
 if !exists(":RepliesTwitter")
-    command RepliesTwitter :call <SID>get_timeline("replies", '')
+    command -count=1 RepliesTwitter :call <SID>get_timeline("replies", '', <count>)
 endif
 if !exists(":DMTwitter")
-    command DMTwitter :call <SID>Direct_Messages()
+    command -count=1 DMTwitter :call <SID>Direct_Messages(<count>)
+endif
+if !exists(":DMSentTwitter")
+    command -count=1 DMSentTwitter :call <SID>Direct_Messages_Sent(<count>)
 endif
 
 nnoremenu Plugin.TwitVim.-Sep1- :
-nnoremenu Plugin.TwitVim.&Friends\ Timeline :call <SID>get_timeline("friends", '')<cr>
-nnoremenu Plugin.TwitVim.&User\ Timeline :call <SID>get_timeline("user", '')<cr>
-nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies", '')<cr>
-nnoremenu Plugin.TwitVim.&Direct\ Messages :call <SID>Direct_Messages()<cr>
-nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public", '')<cr>
+nnoremenu Plugin.TwitVim.&Friends\ Timeline :call <SID>get_timeline("friends", '', 1)<cr>
+nnoremenu Plugin.TwitVim.&User\ Timeline :call <SID>get_timeline("user", '', 1)<cr>
+nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies", '', 1)<cr>
+nnoremenu Plugin.TwitVim.&Direct\ Messages :call <SID>Direct_Messages(1)<cr>
+nnoremenu Plugin.TwitVim.Direct\ Messages\ &Sent :call <SID>Direct_Messages_Sent(1)<cr>
+nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public", '', 1)<cr>
 
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
@@ -733,6 +787,49 @@ function! s:call_urltea(url)
     endif
 endfunction
 
+" Call bit.ly API to shorten a URL.
+function! s:call_bitly(url)
+    call s:get_config_proxy()
+    redraw
+    echo "Sending request to bit.ly..."
+    let output = system('curl -s '.s:proxy.' "http://bit.ly/api?url='.s:url_encode(a:url).'"')
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error calling bit.ly API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	redraw
+	echo "Received response from bit.ly."
+	return output
+    endif
+endfunction
+
+" Call is.gd API to shorten a URL.
+function! s:call_isgd(url)
+    call s:get_config_proxy()
+    redraw
+    echo "Sending request to is.gd..."
+    let output = system('curl -s '.s:proxy.' "http://is.gd/api.php?longurl='.s:url_encode(a:url).'"')
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error calling is.gd API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	redraw
+	echo "Received response from is.gd."
+	return output
+    endif
+endfunction
+
+
 " Invoke URL shortening service to shorten a URL and insert it at the current
 " position in the current buffer.
 function! s:GetShortURL(tweetmode, url, shortfn)
@@ -814,6 +911,26 @@ if !exists(":AUrlTea")
 endif
 if !exists(":PUrlTea")
     command -nargs=? PUrlTea :call <SID>GetShortURL("cmdline", <q-args>, "call_urltea")
+endif
+
+if !exists(":BitLy")
+    command -nargs=? BitLy :call <SID>GetShortURL("insert", <q-args>, "call_bitly")
+endif
+if !exists(":ABitLy")
+    command -nargs=? ABitLy :call <SID>GetShortURL("append", <q-args>, "call_bitly")
+endif
+if !exists(":PBitLy")
+    command -nargs=? PBitLy :call <SID>GetShortURL("cmdline", <q-args>, "call_bitly")
+endif
+
+if !exists(":IsGd")
+    command -nargs=? IsGd :call <SID>GetShortURL("insert", <q-args>, "call_isgd")
+endif
+if !exists(":AIsGd")
+    command -nargs=? AIsGd :call <SID>GetShortURL("append", <q-args>, "call_isgd")
+endif
+if !exists(":PIsGd")
+    command -nargs=? PIsGd :call <SID>GetShortURL("cmdline", <q-args>, "call_isgd")
 endif
 
 " Parse and format search results from Summize API.
