@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.17
+" Version: 0.2.18
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -830,6 +830,44 @@ function! s:call_isgd(url)
 endfunction
 
 
+" Get urlBorg API key if configured by the user. Otherwise, use a default API
+" key.
+function! s:get_urlborg_key()
+    return exists('g:twitvim_urlborg_key') ? g:twitvim_urlborg_key : '26361-80ab'
+endfunction
+
+" Call urlBorg API to shorten a URL.
+function! s:call_urlborg(url)
+    call s:get_config_proxy()
+    let key = s:get_urlborg_key()
+    redraw
+    echo "Sending request to urlBorg..."
+    let output = system('curl -s '.s:proxy.' "http://urlborg.com/api/'.key.'/create/'.s:url_encode(a:url).'"')
+    if v:shell_error != 0
+	redraw
+	echohl ErrorMsg
+	echomsg "Error calling urlBorg API. Result code: ".v:shell_error
+	echomsg "Output:"
+	echomsg output
+	echohl None
+	return ""
+    else
+	let matchres = matchlist(output, '^http')
+	if matchres == []
+	    redraw
+	    echohl ErrorMsg
+	    echomsg "urlBorg error: ".output
+	    echohl None
+	    return ""
+	else
+	    redraw
+	    echo "Received response from urlBorg."
+	    return output
+	endif
+    endif
+endfunction
+
+
 " Invoke URL shortening service to shorten a URL and insert it at the current
 " position in the current buffer.
 function! s:GetShortURL(tweetmode, url, shortfn)
@@ -931,6 +969,16 @@ if !exists(":AIsGd")
 endif
 if !exists(":PIsGd")
     command -nargs=? PIsGd :call <SID>GetShortURL("cmdline", <q-args>, "call_isgd")
+endif
+
+if !exists(":UrlBorg")
+    command -nargs=? UrlBorg :call <SID>GetShortURL("insert", <q-args>, "call_urlborg")
+endif
+if !exists(":AUrlBorg")
+    command -nargs=? AUrlBorg :call <SID>GetShortURL("append", <q-args>, "call_urlborg")
+endif
+if !exists(":PUrlBorg")
+    command -nargs=? PUrlBorg :call <SID>GetShortURL("cmdline", <q-args>, "call_urlborg")
 endif
 
 " Parse and format search results from Summize API.

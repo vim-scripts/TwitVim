@@ -70,6 +70,10 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :IsGd................................: |:IsGd|
 	     :AIsGd...............................: |:AIsGd|
 	     :PIsGd...............................: |:PIsGd|
+	     :UrlBorg.............................: |:UrlBorg|
+	     twitvim_urlborg_key..................: |twitvim_urlborg_key|
+	     :AUrlBorg............................: |:AUrlBorg|
+	     :PUrlBorg............................: |:PUrlBorg|
 	     :Summize.............................: |:Summize|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
@@ -503,6 +507,41 @@ service at http://www.twitter.com.
 	short URL already inserted.
 
 
+	:UrlBorg					*:UrlBorg*
+	:UrlBorg {url}
+
+	urlBorg is a URL forwarding and shortening service. See
+	http://urlborg.com
+
+	This command calls the urlBorg API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	The urlBorg API requires an API key. A default API key is provided
+	with TwitVim and no configuration is required. However, if you wish to
+	supply your own key in order to track your urlBorg history and stats,
+	visit http://urlborg.com/a/account/ to retrieve your API key and then
+	add the following to your vimrc:
+
+							*twitvim_urlborg_key*
+		let twitvim_urlborg_key = "12345-6789"
+
+	Replace 12345-6789 with your API key.
+
+	:AUrlBorg					*:AUrlBorg*
+	:AUrlBorg {url}
+
+	Same as :UrlBorg but appends, i.e. inserts after the current position
+	instead of at the current position, the short URL instead.
+
+	:PUrlBorg					*:PUrlBorg*
+	:PUrlBorg {url}
+	
+	Same as :UrlBorg but prompts for a tweet on the command line with the
+	short URL already inserted.
+
+
 	:Summize					*:Summize*
 	:Summize {query}
 	
@@ -548,6 +587,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.18 : 2008-07-14 * Added support for urlBorg API.
 	0.2.17 : 2008-07-11 * Added command to show DM Sent Timeline.
 			    * Added support for pagination in Friends, User,
 			      Replies, DM, and DM Sent timelines.
