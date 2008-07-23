@@ -23,6 +23,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	   twitvim_login..........................: |twitvim_login|
 	   twitvim_proxy..........................: |twitvim_proxy|
 	   twitvim_proxy_login....................: |twitvim_proxy_login|
+	   twitvim_api_root.......................: |twitvim_api_root|
+	   twitvim-identi.ca......................: |twitvim-identi.ca|
 	3.1. Base64-Encoded Login.................: |TwitVim-login-base64|
 	     twitvim_login_b64....................: |twitvim_login_b64|
 	     twitvim_proxy_login_b64..............: |twitvim_proxy_login_b64|
@@ -148,6 +150,22 @@ service at http://www.twitter.com.
 
 	It is possible to avoid having your proxy password in plaintext in
 	your vimrc. See |TwitVim-login-base64| for details.
+
+
+	6. twitvim_api_root				*twitvim_api_root*
+
+	This setting allows you to configure TwitVim to communicate with
+	servers other than twitter.com that implement a Twitter-compatible
+	API.
+
+							*twitvim-identi.ca*
+	For instance, to use identi.ca instead of Twitter, add this to your
+	vimrc:
+
+		let twitvim_api_root = "http://identi.ca/api"
+	
+	A server implementing a Twitter-compatible API may not support all of
+	Twitter's features, so some TwitVim commands may not work.
 
 
 ------------------------------------------------------------------------------
@@ -587,6 +605,9 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.19 : 2008-07-23 * Added support for non-Twitter servers
+			      implementing the Twitter API. This is for
+			      identi.ca support. See |twitvim-identi.ca|.
 	0.2.18 : 2008-07-14 * Added support for urlBorg API.
 	0.2.17 : 2008-07-11 * Added command to show DM Sent Timeline.
 			    * Added support for pagination in Friends, User,

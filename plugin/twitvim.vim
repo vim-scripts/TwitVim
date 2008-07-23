@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.18
+" Version: 0.2.19
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -36,7 +36,11 @@ endif
 " undesirable, set s:char_limit to 140.
 let s:char_limit = 246
 
-let s:twupdate = "http://twitter.com/statuses/update.xml?source=twitvim"
+" Allow the user to override the API root, e.g. for identi.ca, which offers a
+" Twitter-compatible API.
+function! s:get_api_root()
+    return exists('g:twitvim_api_root') ? g:twitvim_api_root : "http://twitter.com"
+endfunction
 
 function! s:get_config_proxy()
     " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
@@ -230,8 +234,7 @@ function! s:post_twitter(mesg)
     if strlen(mesg) > s:char_limit
 	redraw
 	echohl WarningMsg
-	echo "Your tweet has" strlen(mesg) - s:char_limit
-	    \ "too many characters. It was not sent."
+	echo "Your tweet has" strlen(mesg) - s:char_limit "too many characters. It was not sent."
 	echohl None
     elseif strlen(mesg) < 1
 	redraw
@@ -241,7 +244,8 @@ function! s:post_twitter(mesg)
     else
 	redraw
 	echo "Sending update to Twitter..."
-	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.s:url_encode(mesg).'" '.s:twupdate)
+
+	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.s:url_encode(mesg).'" '.s:get_api_root()."/statuses/update.xml?source=twitvim")
 	if v:shell_error != 0
 	    redraw
 	    echohl ErrorMsg
@@ -534,7 +538,7 @@ function! s:get_timeline(tline_name, username, page)
 
     redraw
     echo "Sending" a:tline_name "timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".login." http://twitter.com/statuses/".url_fname)
+    let output = system("curl -s ".s:proxy." ".login." ".s:get_api_root()."/statuses/".url_fname)
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
@@ -605,7 +609,7 @@ function! s:Direct_Messages(page)
 
     redraw
     echo "Sending direct message timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages.xml".pagearg)
+    let output = system("curl -s ".s:proxy." ".s:login." ".s:get_api_root()."/direct_messages.xml".pagearg)
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
@@ -637,7 +641,7 @@ function! s:Direct_Messages_Sent(page)
 
     redraw
     echo "Sending direct messages sent timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".s:login." http://twitter.com/direct_messages/sent.xml".pagearg)
+    let output = system("curl -s ".s:proxy." ".s:login." ".s:get_api_root()."/direct_messages/sent.xml".pagearg)
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
