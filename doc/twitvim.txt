@@ -76,7 +76,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     twitvim_urlborg_key..................: |twitvim_urlborg_key|
 	     :AUrlBorg............................: |:AUrlBorg|
 	     :PUrlBorg............................: |:PUrlBorg|
-	     :Summize.............................: |:Summize|
+	     :SearchTwitter.......................: |:SearchTwitter|
 	5. Timeline Highlighting..................: |TwitVim-highlight|
 	   twitterUser............................: |hl-twitterUser|
 	   twitterTime............................: |hl-twitterTime|
@@ -560,18 +560,15 @@ service at http://www.twitter.com.
 	short URL already inserted.
 
 
-	:Summize					*:Summize*
-	:Summize {query}
+	:SearchTwitter					*:SearchTwitter*
+	:SearchTwitter {query}
 	
-	Summize is a website that searches Twitter in realtime. See
-	http://summize.com/
+	This command calls the Twitter Search API to search for {query}. If
+	{query} is not provided on the command line, the command will prompt
+	you for it. Search results are then displayed in the timeline buffer.
 
-	This command calls the Summize API to search for {query}. If {query}
-	is not provided on the command line, the command will prompt you for
-	it. Search results are then displayed in the timeline buffer.
-
-	All of the Summize search operators are supported implicitly. See
-	http://summize.com/operators for a list of search operators.
+	All of the Twitter Search operators are supported implicitly. See
+	http://search.twitter.com/operators for a list of search operators.
 
 
 ==============================================================================
@@ -605,6 +602,7 @@ service at http://www.twitter.com.
 ==============================================================================
 6. TwitVim History					*TwitVim-history*
 
+	0.2.20 : 2008-07-24 * Switched from Summize to Twitter Search.
 	0.2.19 : 2008-07-23 * Added support for non-Twitter servers
 			      implementing the Twitter API. This is for
 			      identi.ca support. See |twitvim-identi.ca|.

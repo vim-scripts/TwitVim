@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.19
+" Version: 0.2.20
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: July 11, 2008
+" Last updated: July 24, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -127,7 +127,7 @@ sub twitvim_conv_month {
     undef;
 }
 
-# Parse time string in Twitter RSS or Summize Atom format.
+# Parse time string in Twitter RSS or Twitter Search Atom format.
 sub twitvim_parse_time {
     my $timestr = shift;
     # This timestamp format is used by Twitter in timelines.
@@ -142,7 +142,7 @@ sub twitvim_parse_time {
 	defined $mon or return undef;
 	return timegm($5, $4, $3, $2, $mon, $6);
     }
-    # This timestamp format is used by Summize.
+    # This timestamp format is used by Twitter Search.
     elsif ($timestr =~ /^(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)Z$/) {
 	return timegm($6, $5, $4, $3, $2 - 1, $1);
     }
@@ -391,6 +391,7 @@ function! s:convert_entity(str)
     let s = substitute(s, '&amp;', '\&', 'g')
     let s = substitute(s, '&lt;', '<', 'g')
     let s = substitute(s, '&gt;', '>', 'g')
+    let s = substitute(s, '&quot;', '"', 'g')
     let s = substitute(s, '&#\(\d\+\);','\=nr2char(submatch(1))', 'g')
     return s
 endfunction
@@ -985,7 +986,7 @@ if !exists(":PUrlBorg")
     command -nargs=? PUrlBorg :call <SID>GetShortURL("cmdline", <q-args>, "call_urlborg")
 endif
 
-" Parse and format search results from Summize API.
+" Parse and format search results from Twitter Search API.
 function! s:show_summize(searchres)
     let text = []
     let matchcount = 1
@@ -1016,18 +1017,18 @@ function! s:show_summize(searchres)
     call s:twitter_wintext(text)
 endfunction
 
-" Query Summize API and retrieve results
+" Query Twitter Search API and retrieve results
 function! s:get_summize(query)
     call s:get_config_proxy()
 
     redraw
-    echo "Sending search request to Summize..."
+    echo "Sending search request to Twitter Search..."
 
-    let output = system("curl -s ".s:proxy.' "http://summize.com/search.atom?rpp=25&q='.s:url_encode(a:query).'"')
+    let output = system("curl -s ".s:proxy.' "http://search.twitter.com/search.atom?rpp=25&q='.s:url_encode(a:query).'"')
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
-	echomsg "Error getting search results from Summize. Result code: ".v:shell_error
+	echomsg "Error getting search results from Twitter Search. Result code: ".v:shell_error
 	echomsg "Output:"
 	echomsg output
 	echohl None
@@ -1037,25 +1038,25 @@ function! s:get_summize(query)
     call s:show_summize(output)
     let s:twit_buftype = "summize"
     redraw
-    echo "Received search results from Summize."
+    echo "Received search results from Twitter Search."
 endfunction
 
-" Prompt user for Summize query string if not entered on command line.
+" Prompt user for Twitter Search query string if not entered on command line.
 function! s:Summize(query)
     let query = a:query
 
-    " Prompt the user to enter a query if not provided on :Summize command
-    " line.
+    " Prompt the user to enter a query if not provided on :SearchTwitter
+    " command line.
     if query == ""
 	call inputsave()
-	let query = input("Search Summize: ")
+	let query = input("Search Twitter: ")
 	call inputrestore()
     endif
 
     if query == ""
 	redraw
 	echohl WarningMsg
-	echo "No query provided for Summize search."
+	echo "No query provided for Twitter Search."
 	echohl None
 	return
     endif
@@ -1065,6 +1066,9 @@ endfunction
 
 if !exists(":Summize")
     command -nargs=? Summize :call <SID>Summize(<q-args>)
+endif
+if !exists(":SearchTwitter")
+    command -nargs=? SearchTwitter :call <SID>Summize(<q-args>)
 endif
 
 let &cpo = s:save_cpo
