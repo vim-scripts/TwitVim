@@ -83,15 +83,23 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	   twitterTitle...........................: |hl-twitterTitle|
 	   twitterLink............................: |hl-twitterLink|
 	   twitterReply...........................: |hl-twitterReply|
-	6. History................................: |TwitVim-history|
-	7. Credits................................: |TwitVim-credits|
+	6. Tips and Tricks........................: |TwitVim-tips|
+	6.1. Timeline Hotkeys.....................: |TwitVim-hotkeys|
+	6.2. Switching between services...........: |TwitVim-switch|
+	7. History................................: |TwitVim-history|
+	8. Credits................................: |TwitVim-credits|
 
 
 ==============================================================================
 2. Introduction						*TwitVim-intro*
 
-TwitVim is a plugin that allows you to post to Twitter, a microblogging
-service at http://www.twitter.com.
+	TwitVim is a plugin that allows you to post to Twitter, a
+	microblogging service at http://www.twitter.com.
+
+	Since version 0.2.19, TwitVim also supports other microblogging
+	services, such as identi.ca, that offer Twitter-compatible APIs. See
+	|twitvim_api_root| for information on configuring TwitVim for those
+	services.
 
 
 ==============================================================================
@@ -345,6 +353,10 @@ service at http://www.twitter.com.
 	user:, TwitVim will display that user's timeline in the timeline
 	buffer. This will not launch the web browser.
 
+	In addition, if the cursor is on a word of the form #hashtag, TwitVim
+	will do a Twitter Search for that #hashtag. This too will not launch
+	the web browser.
+
 							*twitvim_browser_cmd*
 	Before using this command, you need to tell TwitVim how to launch your
 	browser. For example, you can add the following to your vimrc:
@@ -592,7 +604,7 @@ service at http://www.twitter.com.
 
 	twitterLink					*hl-twitterLink*
 
-	Link URLs in a Twitter status.
+	Link URLs and #hashtags in a Twitter status.
 
 	twitterReply					*hl-twitterReply*
 
@@ -600,8 +612,68 @@ service at http://www.twitter.com.
 
 
 ==============================================================================
-6. TwitVim History					*TwitVim-history*
+6. Tips and Tricks					*TwitVim-tips*
 
+	Here are a few tips for using TwitVim more efficiently.
+
+
+------------------------------------------------------------------------------
+6.1. Timeline Hotkeys					*TwitVim-hotkeys*
+
+	TwitVim does not autorefresh. However, you can make refreshing your
+	timeline easier by mapping keys to the timeline commands. For example,
+	I use the <F8> key for that:
+
+		nnoremap <F8> :FriendsTwitter<cr>
+		nnoremap <S-F8> :UserTwitter<cr>
+		nnoremap <A-F8> :RepliesTwitter<cr>
+		nnoremap <C-F8> :DMTwitter<cr>
+
+
+------------------------------------------------------------------------------
+6.2. Switching between services				*TwitVim-switch*
+
+	I have user accounts on both Twitter and identi.ca. Here is what I
+	added to my vimrc to make it easy to switch between the two services
+	within the same TwitVim session:
+
+		function! Switch_to_twitter()
+		    let g:twitvim_api_root = "http://twitter.com"
+
+		    let g:twitvim_login_b64 = "Twitter Base64 login"
+
+		    FriendsTwitter
+		endfunction
+
+		function! Switch_to_identica()
+		    let g:twitvim_api_root = "http://identi.ca/api"
+
+		    let g:twitvim_login_b64 = "identi.ca Base64 login"
+
+		    FriendsTwitter
+		endfunction
+
+		command! ToTwitter :call Switch_to_twitter()
+		command! ToIdentica :call Switch_to_identica()
+	
+	With that in place, I can use :ToTwitter and :ToIdentica to switch
+	between services. I added a call to FriendsTwitter at the end of each
+	function so that I'll have a fresh timeline view after switching. You
+	may also use this technique to switch between different user accounts
+	on the same service.
+
+
+==============================================================================
+7. TwitVim History					*TwitVim-history*
+
+	0.2.21 : 2008-08-12 * Added tips section to documentation.
+			    * Use create_or_reuse instead of create in UrlBorg
+			      API so that it will always generate the same
+			      short URL for the same long URL.
+			    * Added support for highlighting #hashtags and
+			      jumping to Twitter Searches for #hashtags.
+			    * Added Python code to convert Twitter timestamps
+			      to local time and simplify them.
 	0.2.20 : 2008-07-24 * Switched from Summize to Twitter Search.
 	0.2.19 : 2008-07-23 * Added support for non-Twitter servers
 			      implementing the Twitter API. This is for
@@ -680,7 +752,7 @@ service at http://www.twitter.com.
 
 
 ==============================================================================
-7. TwitVim Credits					*TwitVim-credits*
+8. TwitVim Credits					*TwitVim-credits*
 
 	Thanks to Travis Jeffery, the author of the original VimTwitter script
 	(vimscript #2124), who came up with the idea of running cURL from Vim

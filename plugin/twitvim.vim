@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.20
+" Version: 0.2.21
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: July 24, 2008
+" Last updated: August 12, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -25,11 +25,25 @@ set cpo&vim
 let s:proxy = ""
 let s:login = ""
 
-" If true, disable the Perl code that simplifies and localizes Twitter
+" If true, disable the Perl/Python code that simplifies and localizes Twitter
 " timestamps.
 if !exists('g:twitvim_disable_simple_time')
     let g:twitvim_disable_simple_time = 0
 endif
+
+" If true, disable the Perl code.
+if !exists('g:twitvim_disable_perl')
+    let g:twitvim_disable_perl = 0
+endif
+
+" If true, disable the Python code.
+if !exists('g:twitvim_disable_python')
+    let g:twitvim_disable_python = 0
+endif
+
+" This variable indicates which extension code to use. The value could be
+" 'perl', 'python', 'none', or '' for undetermined.
+let s:twitvim_use_lang = ''
 
 " The extended character limit is 246. Twitter will display a tweet longer than
 " 140 characters in truncated form with a link to the full tweet. If that is
@@ -105,8 +119,8 @@ endfunction
 
 " === Perl time string parser ===
 
-if has('perl') && !g:twitvim_disable_simple_time
-    function s:def_perl_time_funcs()
+if has('perl') && !g:twitvim_disable_perl
+    function s:check_perl()
 	perl <<EOF
 eval {
     require Time::Local; Time::Local->import;
@@ -114,9 +128,13 @@ eval {
 };
 if ($@) {
     # Play it safe and disable this feature if modules fail to load.
-    VIM::DoCommand('let g:twitvim_disable_simple_time = 1');
+    VIM::DoCommand('let g:twitvim_disable_perl = 1');
 }
+EOF
+    endfunction
 
+    function s:def_perl_time_funcs()
+	perl <<EOF
 # Convert abbreviated month name to month number.
 sub twitvim_conv_month {
     my $monthstr = shift;
@@ -160,8 +178,6 @@ sub twitvim_new_time {
 EOF
     endfunction
 
-    call s:def_perl_time_funcs()
-
     " Wrapper for the Twitter timestamp converter.
     function s:perl_time(timestr)
 	execute 'perl VIM::DoCommand("let newtime = \"".twitvim_new_time("'.a:timestr.'")."\"")'
@@ -169,17 +185,135 @@ EOF
     endfunction
 endif
 
+" === End of Perl time string parser ===
+
+" === Python time string parser ===
+if has('python') && !g:twitvim_disable_python
+    function s:check_python()
+	python <<EOF
+import vim
+try:
+    import re
+    import time
+    import calendar
+except:
+    vim.command('let g:twitvim_disable_python = 1')
+EOF
+    endfunction
+
+    function s:def_python_time_funcs()
+	python <<EOF
+# Convert abbreviated month name to month number.
+def twitvim_conv_month(str):
+    months = ('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+	'jul', 'aug', 'sep', 'oct', 'nov', 'dec')
+    for mon in range(0, len(months)):
+	if months[mon] == str.lower():
+	    return mon + 1
+
+# Convert a match object from a time regex to a time value.
+def twitvim_timegm(mobj, sequence):
+    tlist = []
+    for i in sequence:
+	if i < 0:
+	    mon = twitvim_conv_month(mobj.group(-i))
+	    if not mon:
+		return
+	    tlist.append(mon)
+	else:
+	    tlist.append(int(mobj.group(i)))
+    return calendar.timegm(tlist)
+
+def twitvim_parse_time(str):
+    # This timestamp format is used by Twitter in timelines.
+    mobj = re.match('^\w+,\s+(\d+)\s+(\w+)\s+(\d+)\s+(\d+):(\d+):(\d+)\s+\+0000$', str)
+    if mobj:
+	return twitvim_timegm(mobj, (3, -2, 1, 4, 5, 6))
+
+    # This timestamp format is used by Twitter in response to an update.
+    mobj = re.match('^\w+\s+(\w+)\s+(\d+)\s+(\d+):(\d+):(\d+)\s+\+0000\s+(\d+)$', str)
+    if mobj:
+	return twitvim_timegm(mobj, (6, -1, 2, 3, 4, 5))
+	
+    # This timestamp format is used by Twitter Search.
+    mobj = re.match('^(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)Z$', str)
+    if mobj:
+	return twitvim_timegm(mobj, range(1, 7))
+
+# Convert the Twitter timestamp to local time and simplify it.
+def twitvim_new_time(str):
+    t = twitvim_parse_time(str)
+    return t and time.strftime('%I:%M %p %b %d, %Y', time.localtime(t)) or str
+EOF
+    endfunction
+    
+    " Wrapper for the Twitter timestamp converter.
+    function s:python_time(timestr)
+	execute 'python vim.command("let newtime = \"" + twitvim_new_time("'.a:timestr.'") + "\"")'
+	return newtime
+    endfunction
+endif
+
+" === End of Python time string parser ===
+
+" Check which language extensions are available and which ones the user has not
+" disabled. Choose one for all future calls to time_filter().
+function s:check_lang()
+    if s:twitvim_use_lang != ''
+	return
+    endif
+
+    " twitvim_disable_simple_time disables every language.
+    if g:twitvim_disable_simple_time
+	let s:twitvim_use_lang = 'none'
+	return
+    endif
+
+    if !g:twitvim_disable_python && has('python')
+	call s:check_python()
+	" Check twitvim_disable_python again after calling check_python(). If
+	" it is now disabled, that means initialization failed.
+	if !g:twitvim_disable_python
+	    call s:def_python_time_funcs()
+	    let s:twitvim_use_lang = 'python'
+	    return
+	endif
+    endif
+
+    if !g:twitvim_disable_perl && has('perl')
+	call s:check_perl()
+	" Check twitvim_disable_perl again after calling check_perl(). If it
+	" is now disabled, that means initialization failed.
+	if !g:twitvim_disable_perl
+	    call s:def_perl_time_funcs()
+	    let s:twitvim_use_lang = 'perl'
+	    return
+	endif
+    endif
+
+    let s:twitvim_use_lang = 'none'
+endfunction
+
 " Simplify the time string. Do this only if the Perl interface is enabled and
 " if we have not disabled the feature.
 function s:time_filter(timestr)
+    call s:check_lang()
     let s = a:timestr
-    if has('perl') && !g:twitvim_disable_simple_time
+    if s:twitvim_use_lang == 'python'
+	let s = s:python_time(s)
+    elseif s:twitvim_use_lang == 'perl'
 	let s = s:perl_time(s)
     endif
     return s
 endfunction
 
-" === End of Perl time string parser ===
+" For debugging.
+if !exists(":TwitvimShowLang")
+    command TwitvimShowLang echo s:twitvim_use_lang
+endif
+if !exists(":TwitvimResetLang")
+    command TwitvimResetLang let s:twitvim_use_lang = '' | echo "Resetting twitvim_use_lang"
+endif
 
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
@@ -368,15 +502,25 @@ endfunction
 function! s:launch_url_cword()
     let s = expand("<cWORD>")
 
+    " Handle @-replies by showing that user's timeline.
     let matchres = matchlist(s, '^@\(\w\+\)')
     if matchres != []
 	call s:get_timeline("user", matchres[1], 1)
 	return
     endif
 
+    " Handle username: at the beginning of the line by showing that user's
+    " timeline.
     let matchres = matchlist(s, '^\(\w\+\):$')
     if matchres != []
 	call s:get_timeline("user", matchres[1], 1)
+	return
+    endif
+
+    " Handle #-hashtags by showing the Twitter Search for that hashtag.
+    let matchres = matchlist(s, '^\(#\w\+\)')
+    if matchres != []
+	call s:get_summize(matchres[1])
 	return
     endif
 
@@ -446,6 +590,10 @@ function! s:twitter_win()
 	    " An @-reply must be preceded by whitespace and ends at a non-word
 	    " character.
 	    syntax match twitterReply "\S\@<!@\w\+"
+
+	    " A #-hashtag must be preceded by whitespace and ends at a non-word
+	    " character.
+	    syntax match twitterLink "\S\@<!#\w\+"
 
 	    " Use the extra star at the end to recognize the title but hide the
 	    " star.
@@ -847,7 +995,7 @@ function! s:call_urlborg(url)
     let key = s:get_urlborg_key()
     redraw
     echo "Sending request to urlBorg..."
-    let output = system('curl -s '.s:proxy.' "http://urlborg.com/api/'.key.'/create/'.s:url_encode(a:url).'"')
+    let output = system('curl -s '.s:proxy.' "http://urlborg.com/api/'.key.'/create_or_reuse/'.s:url_encode(a:url).'"')
     if v:shell_error != 0
 	redraw
 	echohl ErrorMsg
