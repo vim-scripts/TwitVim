@@ -666,6 +666,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 ==============================================================================
 7. TwitVim History					*TwitVim-history*
 
+	0.2.22 : 2008-08-13 * Rewrote time conversion code in Vim script
+			      so we don't need Perl or Python any more.
+			    * Do not URL-encode digits 0 to 9.
 	0.2.21 : 2008-08-12 * Added tips section to documentation.
 			    * Use create_or_reuse instead of create in UrlBorg
 			      API so that it will always generate the same
