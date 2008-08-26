@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.22
+" Version: 0.2.23
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: August 13, 2008
+" Last updated: August 25, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -186,6 +186,9 @@ function! s:add_update(output)
 	let text = s:xml_get_element(a:output, 'text')
 	let name = s:xml_get_element(a:output, 'screen_name')
 
+	" Add the status ID to the current buffer's statuses list.
+	call insert(s:statuses, s:xml_get_element(a:output, 'id'), 3)
+
 	if text == ""
 	    return
 	endif
@@ -193,8 +196,10 @@ function! s:add_update(output)
 	let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
 	if twit_bufnr > 0
 	    execute twit_bufnr . "wincmd w"
+	    set modifiable
 	    call append(2, name.': '.s:convert_entity(text).' |'.date.'|')
 	    normal 1G
+	    set nomodifiable
 	    wincmd p
 	endif
     endif
@@ -206,7 +211,7 @@ function! s:url_encode(str)
 endfunction
 
 " Common code to post a message to Twitter.
-function! s:post_twitter(mesg)
+function! s:post_twitter(mesg, inreplyto)
     " Get user-config variables twitvim_proxy and twitvim_login.
     " We get these variables every time before posting to Twitter so that the
     " user can change them on the fly.
@@ -214,6 +219,9 @@ function! s:post_twitter(mesg)
     if rc < 0
 	return -1
     endif
+
+    " Add in_reply_to_status_id if status ID is available.
+    let inreply = a:inreplyto == 0 ? '' : '-d in_reply_to_status_id='.s:url_encode(a:inreplyto)
 
     let mesg = a:mesg
 
@@ -241,7 +249,8 @@ function! s:post_twitter(mesg)
 	redraw
 	echo "Sending update to Twitter..."
 
-	let output = system("curl -s ".s:proxy." ".s:login.' -d status="'.s:url_encode(mesg).'" '.s:get_api_root()."/statuses/update.xml?source=twitvim")
+	let s:updatecmd = "curl -s ".s:proxy." ".s:login." ".inreply.' -d status="'.s:url_encode(mesg).'" '.s:get_api_root()."/statuses/update.xml?source=twitvim"
+	let output = system(s:updatecmd)
 	if v:shell_error != 0
 	    redraw
 	    echohl ErrorMsg
@@ -259,7 +268,7 @@ endfunction
 
 " Prompt user for tweet and then post it.
 " If initstr is given, use that as the initial input.
-function! s:CmdLine_Twitter(initstr)
+function! s:CmdLine_Twitter(initstr, inreplyto)
     " Do this here too to check for twitvim_login. This is to avoid having the
     " user type in the message only to be told that his configuration is
     " incomplete.
@@ -271,7 +280,7 @@ function! s:CmdLine_Twitter(initstr)
     call inputsave()
     let mesg = input("Your Twitter: ", a:initstr)
     call inputrestore()
-    call s:post_twitter(mesg)
+    call s:post_twitter(mesg, a:inreplyto)
 endfunction
 
 " Extract the user name from a line in the timeline.
@@ -285,7 +294,9 @@ endfunction
 function! s:Quick_Reply()
     let username = s:get_user_name(getline('.'))
     if username != ""
-	call s:CmdLine_Twitter('@'.username.' ')
+	" If the status ID is not available, get() will return 0 and
+	" post_twitter() won't add in_reply_to_status_id to the update.
+	call s:CmdLine_Twitter('@'.username.' ', get(s:statuses, line('.')))
     endif
 endfunction
 
@@ -294,32 +305,32 @@ endfunction
 function! s:Quick_DM()
     let username = s:get_user_name(getline('.'))
     if username != ""
-	call s:CmdLine_Twitter('d '.username.' ')
+	call s:CmdLine_Twitter('d '.username.' ', 0)
     endif
 endfunction
 
 
 " Prompt user for tweet.
 if !exists(":PosttoTwitter")
-    command PosttoTwitter :call <SID>CmdLine_Twitter('')
+    command PosttoTwitter :call <SID>CmdLine_Twitter('', 0)
 endif
 
-nnoremenu Plugin.TwitVim.Post\ from\ cmdline :call <SID>CmdLine_Twitter('')<cr>
+nnoremenu Plugin.TwitVim.Post\ from\ cmdline :call <SID>CmdLine_Twitter('', 0)<cr>
 
 " Post current line to Twitter.
 if !exists(":CPosttoTwitter")
-    command CPosttoTwitter :call <SID>post_twitter(getline('.'))
+    command CPosttoTwitter :call <SID>post_twitter(getline('.'), 0)
 endif
 
-nnoremenu Plugin.TwitVim.Post\ current\ line :call <SID>post_twitter(getline('.'))<cr>
+nnoremenu Plugin.TwitVim.Post\ current\ line :call <SID>post_twitter(getline('.'), 0)<cr>
 
 " Post entire buffer to Twitter.
 if !exists(":BPosttoTwitter")
-    command BPosttoTwitter :call <SID>post_twitter(join(getline(1, "$")))
+    command BPosttoTwitter :call <SID>post_twitter(join(getline(1, "$")), 0)
 endif
 
 " Post visual selection to Twitter.
-noremap <SID>Visual y:call <SID>post_twitter(@")<cr>
+noremap <SID>Visual y:call <SID>post_twitter(@", 0)<cr>
 noremap <unique> <script> <Plug>TwitvimVisual <SID>Visual
 if !hasmapto('<Plug>TwitvimVisual')
     vmap <unique> <A-t> <Plug>TwitvimVisual
@@ -352,9 +363,18 @@ function! s:launch_browser(url)
 
     redraw
     echo "Launching web browser..."
-    silent execute startcmd g:twitvim_browser_cmd url endcmd
-    redraw
-    echo "Web browser launched."
+    let v:errmsg = ""
+    silent! execute startcmd g:twitvim_browser_cmd url endcmd
+    if v:errmsg == ""
+	redraw
+	echo "Web browser launched."
+    else
+	execute "normal \<Esc>"
+	redraw
+	echohl ErrorMsg
+	echomsg 'Error launching browser:' v:errmsg
+	echohl None
+    endif
 endfunction
 
 " Launch web browser with the URL at the cursor position. If possible, this
@@ -405,6 +425,46 @@ endfunction
 let s:twit_winname = "Twitter_".localtime()
 let s:twit_buftype = ""
 
+" Set syntax highlighting in timeline window.
+function! s:twitter_win_syntax()
+    " Beautify the Twitter window with syntax highlighting.
+    if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
+
+	" Twitter user name: from start of line to first colon.
+	syntax match twitterUser /^.\{-1,}:/
+
+	" Use the bars to recognize the time but hide the bars.
+	syntax match twitterTime /|[^|]\+|$/ contains=twitterTimeBar
+	syntax match twitterTimeBar /|/ contained
+
+	" Highlight links in tweets.
+	syntax match twitterLink "\<http://\S\+"
+	syntax match twitterLink "\<https://\S\+"
+	syntax match twitterLink "\<ftp://\S\+"
+
+	" An @-reply must be preceded by whitespace and ends at a non-word
+	" character.
+	syntax match twitterReply "\S\@<!@\w\+"
+
+	" A #-hashtag must be preceded by whitespace and ends at a non-word
+	" character.
+	syntax match twitterLink "\S\@<!#\w\+"
+
+	" Use the extra star at the end to recognize the title but hide the
+	" star.
+	syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	syntax match twitterTitleStar /\*$/ contained
+
+	highlight default link twitterUser Identifier
+	highlight default link twitterTime String
+	highlight default link twitterTimeBar Ignore
+	highlight default link twitterTitle Title
+	highlight default link twitterTitleStar Ignore
+	highlight default link twitterLink Underlined
+	highlight default link twitterReply Label
+    endif
+endfunction
+
 " Switch to the Twitter window if there is already one or open a new window for
 " Twitter.
 function! s:twitter_win()
@@ -433,49 +493,16 @@ function! s:twitter_win()
 	nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword()<cr>
 	vnoremap <buffer> <silent> <A-g> y:call <SID>launch_browser(@")<cr>
 	vnoremap <buffer> <silent> <Leader>g y:call <SID>launch_browser(@")<cr>
-
-	" Beautify the Twitter window with syntax highlighting.
-	if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
-
-	    " Twitter user name: from start of line to first colon.
-	    syntax match twitterUser /^.\{-1,}:/
-
-	    " Use the bars to recognize the time but hide the bars.
-	    syntax match twitterTime /|[^|]\+|$/ contains=twitterTimeBar
-	    syntax match twitterTimeBar /|/ contained
-
-	    " Highlight links in tweets.
-	    syntax match twitterLink "\<http://\S\+"
-	    syntax match twitterLink "\<https://\S\+"
-	    syntax match twitterLink "\<ftp://\S\+"
-
-	    " An @-reply must be preceded by whitespace and ends at a non-word
-	    " character.
-	    syntax match twitterReply "\S\@<!@\w\+"
-
-	    " A #-hashtag must be preceded by whitespace and ends at a non-word
-	    " character.
-	    syntax match twitterLink "\S\@<!#\w\+"
-
-	    " Use the extra star at the end to recognize the title but hide the
-	    " star.
-	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
-	    syntax match twitterTitleStar /\*$/ contained
-
-	    highlight default link twitterUser Identifier
-	    highlight default link twitterTime String
-	    highlight default link twitterTimeBar Ignore
-	    highlight default link twitterTitle Title
-	    highlight default link twitterTitleStar Ignore
-	    highlight default link twitterLink Underlined
-	    highlight default link twitterReply Label
-	endif
     endif
+
+    call s:twitter_win_syntax()
 endfunction
 
 " Get a Twitter window and stuff text into it.
 function! s:twitter_wintext(text)
     call s:twitter_win()
+
+    set modifiable
 
     " Overwrite the entire buffer.
     " Need to use 'silent' or a 'No lines in buffer' message will appear.
@@ -484,6 +511,8 @@ function! s:twitter_wintext(text)
     call setline('.', a:text)
     normal 1G
 
+    set nomodifiable
+
     wincmd p
 endfunction
 
@@ -491,6 +520,9 @@ endfunction
 function! s:show_timeline(timeline, page)
     let matchcount = 1
     let text = []
+
+    " Index of first status will be 3 to match line numbers in timeline display.
+    let s:statuses = [0, 0, 0]
 
     let channel = s:xml_remove_elements(a:timeline, 'item')
     let title = s:xml_get_element(channel, 'title')
@@ -514,12 +546,26 @@ function! s:show_timeline(timeline, page)
 	let title = s:xml_get_element(item, 'title')
 	let pubdate = s:time_filter(s:xml_get_element(item, 'pubDate'))
 
+	" Parse and save the status ID.
+	let status = substitute(s:xml_get_element(item, 'guid'), '^.*/', '', '')
+	call add(s:statuses, status)
+
 	call add(text, s:convert_entity(title).' |'.pubdate.'|')
 
 	let matchcount += 1
     endwhile
     call s:twitter_wintext(text)
 endfunction
+
+" For debugging. Show list of status IDs.
+if !exists(":TwitVimShowStatuses")
+    command TwitVimShowStatuses :echo s:statuses
+endif
+
+" For debugging. Show cURL command for the last update.
+if !exists(":TwitVimShowLastUpdate")
+    command TwitVimShowLastUpdate :echo s:updatecmd
+endif
 
 " Generic timeline retrieval function.
 function! s:get_timeline(tline_name, username, page)
@@ -575,6 +621,9 @@ endfunction
 function! s:show_dm_xml(sent_or_recv, timeline, page)
     let matchcount = 1
     let text = []
+
+    "No status IDs in direct messages.
+    let s:statuses = []
 
     let title = 'Direct messages '.a:sent_or_recv
 
@@ -907,7 +956,7 @@ function! s:GetShortURL(tweetmode, url, shortfn)
     let shorturl = call(function("s:".a:shortfn), [url])
     if shorturl != ""
 	if a:tweetmode == "cmdline"
-	    call s:CmdLine_Twitter(shorturl." ")
+	    call s:CmdLine_Twitter(shorturl." ", 0)
 	elseif a:tweetmode == "append"
 	    execute "normal a".shorturl."\<esc>"
 	else
@@ -1001,6 +1050,9 @@ function! s:show_summize(searchres)
     let text = []
     let matchcount = 1
 
+    " Index of first status will be 3 to match line numbers in timeline display.
+    let s:statuses = [0, 0, 0]
+
     let channel = s:xml_remove_elements(a:searchres, 'entry')
     let title = s:xml_get_element(channel, 'title')
 
@@ -1019,6 +1071,10 @@ function! s:show_summize(searchres)
 	let title = s:xml_get_element(item, 'title')
 	let pubdate = s:time_filter(s:xml_get_element(item, 'updated'))
 	let sender = substitute(s:xml_get_element(item, 'uri'), 'http://twitter.com/', '', '')
+
+	" Parse and save the status ID.
+	let status = substitute(s:xml_get_element(item, 'id'), '^.*:', '', '')
+	call add(s:statuses, status)
 
 	call add(text, sender.": ".s:convert_entity(title).' |'.pubdate.'|')
 
