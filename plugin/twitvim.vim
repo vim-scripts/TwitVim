@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.2.24
+" Version: 0.3.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: August 28, 2008
+" Last updated: September 18, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -41,44 +41,75 @@ function! s:get_retweet_fmt()
     return exists('g:twitvim_retweet_format') ? g:twitvim_retweet_format : "Retweeting %s: %t"
 endfunction
 
-function! s:get_config_proxy()
-    " Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
-    " Format is proxysite:proxyport
-    let s:proxy = exists('g:twitvim_proxy') ? '-x "'.g:twitvim_proxy.'"': ""
-    " If twitvim_proxy_login exists, use that as the proxy login.
-    " Format is proxyuser:proxypassword
-    " If twitvim_proxy_login_b64 exists, use that instead. This is the proxy
-    " user:password in base64 encoding.
-    if exists('g:twitvim_proxy_login_b64')
-	let s:proxy .= ' -H "Proxy-Authorization: Basic '.g:twitvim_proxy_login_b64.'"'
+" Allow user to enable Python networking code by setting twitvim_enable_python.
+function! s:get_enable_python()
+    return exists('g:twitvim_enable_python') ? g:twitvim_enable_python : 0
+endfunction
+
+" Allow user to enable Perl networking code by setting twitvim_enable_perl.
+function! s:get_enable_perl()
+    return exists('g:twitvim_enable_perl') ? g:twitvim_enable_perl : 0
+endfunction
+
+" Allow user to enable Ruby code by setting twitvim_enable_ruby.
+function! s:get_enable_ruby()
+    return exists('g:twitvim_enable_ruby') ? g:twitvim_enable_ruby : 0
+endfunction
+
+" Allow user to enable Tcl code by setting twitvim_enable_tcl.
+function! s:get_enable_tcl()
+    return exists('g:twitvim_enable_tcl') ? g:twitvim_enable_tcl : 0
+endfunction
+
+" Get proxy setting from twitvim_proxy in .vimrc or _vimrc.
+" Format is proxysite:proxyport
+function! s:get_proxy()
+    return exists('g:twitvim_proxy') ? g:twitvim_proxy : ''
+endfunction
+
+" If twitvim_proxy_login exists, use that as the proxy login.
+" Format is proxyuser:proxypassword
+" If twitvim_proxy_login_b64 exists, use that instead. This is the proxy
+" user:password in base64 encoding.
+function! s:get_proxy_login()
+    if exists('g:twitvim_proxy_login_b64') && g:twitvim_proxy_login_b64 != ''
+	return g:twitvim_proxy_login_b64
     else
-	let s:proxy .= exists('g:twitvim_proxy_login') ? ' -U "'.g:twitvim_proxy_login.'"' : ''
+	return exists('g:twitvim_proxy_login') ? g:twitvim_proxy_login : ''
     endif
 endfunction
 
-" Get user-config variables twitvim_proxy and twitvim_login.
-function! s:get_config()
-    call s:get_config_proxy()
+" Display an error message in the message area.
+function! s:errormsg(msg)
+    redraw
+    echohl ErrorMsg
+    echomsg a:msg
+    echohl None
+endfunction
 
-    " Get Twitter login info from twitvim_login in .vimrc or _vimrc.
-    " Format is username:password
-    " If twitvim_login_b64 exists, use that instead. This is the user:password
-    " in base64 encoding.
-    if exists('g:twitvim_login_b64')
-	let s:login = '-H "Authorization: Basic '.g:twitvim_login_b64.'"'	
+" Display a warning message in the message area.
+function! s:warnmsg(msg)
+    redraw
+    echohl WarningMsg
+    echo a:msg
+    echohl None
+endfunction
+
+" Get Twitter login info from twitvim_login in .vimrc or _vimrc.
+" Format is username:password
+" If twitvim_login_b64 exists, use that instead. This is the user:password
+" in base64 encoding.
+function! s:get_twitvim_login()
+    if exists('g:twitvim_login_b64') && g:twitvim_login_b64 != ''
+	return g:twitvim_login_b64
     elseif exists('g:twitvim_login') && g:twitvim_login != ''
-	let s:login = '-u "'.g:twitvim_login.'"'
+	return g:twitvim_login
     else
 	" Beep and error-highlight 
 	execute "normal \<Esc>"
-	redraw
-	echohl ErrorMsg
-	echomsg 'Twitter login not set.'
-	    \ 'Please add to .vimrc: let twitvim_login="USER:PASS"'
-	echohl None
-	return -1
+	call s:errormsg('Twitter login not set. Please add to .vimrc: let twitvim_login="USER:PASS"')
+	return ''
     endif
-    return 0
 endfunction
 
 " === XML helper functions ===
@@ -182,6 +213,419 @@ endfunction
 
 " === End of time parser ===
 
+" === Networking code ===
+
+function! s:url_encode_char(c)
+    let utf = iconv(a:c, &encoding, "utf-8")
+    if utf == ""
+	return a:c
+    else
+	let s = ""
+	for i in range(strlen(utf))
+	    let s .= printf("%%%02X", char2nr(utf[i]))
+	endfor
+	return s
+    endif
+endfunction
+
+" URL-encode a string.
+function! s:url_encode(str)
+    return substitute(a:str, '[^a-zA-Z0-9_-]', '\=s:url_encode_char(submatch(0))', 'g')
+endfunction
+
+" Use curl to fetch a web page.
+function! s:curl_curl(url, login, proxy, proxylogin, parms)
+    let error = ""
+    let output = ""
+
+    let curlcmd = "curl -s -f -S "
+
+    if a:proxy != ""
+	let curlcmd .= '-x "'.a:proxy.'" '
+    endif
+
+    if a:proxylogin != ""
+	if stridx(a:proxylogin, ':') != -1
+	    let curlcmd .= '-U "'.a:proxylogin.'" '
+	else
+	    let curlcmd .= '-H "Proxy-Authorization: Basic '.a:proxylogin.'" '
+	endif
+    endif
+
+    if a:login != ""
+	if stridx(a:login, ':') != -1
+	    let curlcmd .= '-u "'.a:login.'" '
+	else
+	    let curlcmd .= '-H "Authorization: Basic '.a:login.'" '
+	endif
+    endif
+
+    for [k, v] in items(a:parms)
+	let curlcmd .= '-d "'.s:url_encode(k).'='.s:url_encode(v).'" '
+    endfor
+
+    let curlcmd .= '"'.a:url.'"'
+
+    let output = system(curlcmd)
+    if v:shell_error != 0
+	let error = output
+    endif
+
+    return [ error, output ]
+endfunction
+
+" Check if we can use Python.
+function! s:check_python()
+    let can_python = 1
+    python <<EOF
+import vim
+try:
+    import urllib
+    import urllib2
+    import base64
+except:
+    vim.command('let can_python = 0')
+EOF
+    return can_python
+endfunction
+
+" Use Python to fetch a web page.
+function! s:python_curl(url, login, proxy, proxylogin, parms)
+    let error = ""
+    let output = ""
+    python <<EOF
+import urllib
+import urllib2
+import base64
+import vim
+
+def make_base64(s):
+    if s.find(':') != -1:
+	s = base64.b64encode(s)
+    return s
+
+try:
+    url = vim.eval("a:url")
+    parms = vim.eval("a:parms")
+    req = parms == {} and urllib2.Request(url) or urllib2.Request(url, urllib.urlencode(parms))
+
+    login = vim.eval("a:login")
+    if login != "":
+	req.add_header('Authorization', 'Basic %s' % make_base64(login))
+
+    proxy = vim.eval("a:proxy")
+    if proxy != "":
+	req.set_proxy(proxy, 'http')
+
+    proxylogin = vim.eval("a:proxylogin")
+    if proxylogin != "":
+	req.add_header('Proxy-Authorization', 'Basic %s' % make_base64(proxylogin))
+
+    f = urllib2.urlopen(req)
+    out = ''.join(f.readlines())
+except urllib2.HTTPError, (httperr):
+    vim.command("let error='%s'" % str(httperr).replace("'", "''"))
+else:
+    vim.command("let output='%s'" % out.replace("'", "''"))
+EOF
+
+    return [ error, output ]
+endfunction
+
+" Check if we can use Perl.
+function! s:check_perl()
+    let can_perl = 1
+    perl <<EOF
+eval {
+    require MIME::Base64;
+    MIME::Base64->import;
+
+    require LWP::UserAgent;
+    LWP::UserAgent->import;
+};
+
+if ($@) {
+    VIM::DoCommand('let can_perl = 0');
+}
+EOF
+    return can_perl
+endfunction
+
+" Use Perl to fetch a web page.
+function! s:perl_curl(url, login, proxy, proxylogin, parms)
+    let error = ""
+    let output = ""
+
+    perl <<EOF
+require MIME::Base64;
+MIME::Base64->import;
+
+require LWP::UserAgent;
+LWP::UserAgent->import;
+
+sub make_base64 {
+    my $s = shift;
+    $s =~ /:/ ? encode_base64($s) : $s;
+}
+
+my $ua = LWP::UserAgent->new;
+
+my $url = VIM::Eval('a:url');
+
+my $login = VIM::Eval('a:login');
+$login ne '' and $ua->default_header('Authorization' => 'Basic '.make_base64($login));
+
+my $proxy = VIM::Eval('a:proxy');
+$proxy ne '' and $ua->proxy('http', "http://$proxy");
+
+my $proxylogin = VIM::Eval('a:proxylogin');
+$proxylogin ne '' and $ua->default_header('Proxy-Authorization' => 'Basic '.make_base64($proxylogin));
+
+my %parms = ();
+my $keys = VIM::Eval('keys(a:parms)');
+for $k (split(/\n/, $keys)) {
+    $parms{$k} = VIM::Eval("a:parms['$k']");
+}
+
+my $response = %parms ? $ua->post($url, \%parms) : $ua->get($url);
+if ($response->is_success) {
+    my $output = $response->content;
+    $output =~ s/'/''/g;
+    VIM::DoCommand("let output ='$output'");
+}
+else {
+    my $error = $response->status_line;
+    $error =~ s/'/''/g;
+    VIM::DoCommand("let error ='$error'");
+}
+EOF
+
+    return [ error, output ]
+endfunction
+
+" Check if we can use Ruby.
+"
+" Note: Before the networking code will function in Ruby under Windows, you
+" need the patch from here:
+" http://www.mail-archive.com/vim_dev@googlegroups.com/msg03693.html
+"
+" and Bram's correction to the patch from here:
+" http://www.mail-archive.com/vim_dev@googlegroups.com/msg03713.html
+"
+function! s:check_ruby()
+    let can_ruby = 1
+    ruby <<EOF
+begin
+    require 'net/http'
+    require 'uri'
+    require 'Base64'
+rescue LoadError
+    VIM.command('let can_ruby = 0')
+end
+EOF
+    return can_ruby
+endfunction
+
+" Use Ruby to fetch a web page.
+function! s:ruby_curl(url, login, proxy, proxylogin, parms)
+    let error = ""
+    let output = ""
+
+    ruby <<EOF
+require 'net/http'
+require 'uri'
+require 'Base64'
+
+def make_base64(s)
+    s =~ /:/ ? Base64.encode64(s) : s
+end
+
+proxy = VIM.evaluate('a:proxy')
+if proxy != ''
+    prox = URI.parse("http://#{proxy}")
+    net = Net::HTTP::Proxy(prox.host, prox.port)
+else
+    net = Net::HTTP
+end
+
+parms = {}
+keys = VIM.evaluate('keys(a:parms)')
+keys.split(/\n/).each { |k|
+    parms[k] = VIM.evaluate("a:parms['#{k}']")
+}
+
+url = URI.parse(VIM.evaluate('a:url'))
+res = net.start(url.host, url.port) { |http| 
+    path = "#{url.path}?#{url.query}"
+    if parms == {}
+	req = Net::HTTP::Get.new(path)
+    else
+	req = Net::HTTP::Post.new(path)
+	req.set_form_data(parms)
+    end
+
+    login = VIM.evaluate('a:login')
+    if login != ''
+	req.add_field 'Authorization', "Basic #{make_base64(login)}"
+    end
+
+    proxylogin = VIM.evaluate('a:proxylogin')
+    if proxylogin != ''
+	req.add_field 'Proxy-Authorization', "Basic #{make_base64(proxylogin)}"
+    end
+
+    http.request(req)
+}
+case res
+when Net::HTTPSuccess
+    output = res.body.gsub("'", "''")
+    VIM.command("let output='#{output}'")
+else
+    error = "#{res.code} #{res.message}".gsub("'", "''")
+    VIM.command("let error='#{error}'")
+end
+EOF
+
+    return [error, output]
+endfunction
+
+" Check if we can use Tcl.
+"
+" Note: ActiveTcl 8.5 doesn't include Tcllib in the download. You need to run the following after installing ActiveTcl:
+"
+"    teacup install tcllib
+"
+function! s:check_tcl()
+    let can_tcl = 1
+    tcl <<EOF
+if [catch {
+    package require http
+    package require uri
+    package require base64
+} result] {
+    ::vim::command "let can_tcl = 0"
+}
+EOF
+    return can_tcl
+endfunction
+
+" Use Tcl to fetch a web page.
+function! s:tcl_curl(url, login, proxy, proxylogin, parms)
+    let error = ""
+    let output = ""
+
+    tcl << EOF
+package require http
+package require uri
+package require base64
+
+proc make_base64 {s} {
+    if { [string first : $s] >= 0 } {
+	return [base64::encode $s]
+    }
+    return $s
+}
+
+set url [::vim::expr a:url]
+
+set headers [list]
+
+set proxy [::vim::expr a:proxy]
+if { $proxy != "" } {
+    array set prox [uri::split "http://$proxy"]
+    ::http::config -proxyhost $prox(host)
+    ::http::config -proxyport $prox(port)
+}
+
+set proxylogin [::vim::expr a:proxylogin]
+if { $proxylogin != "" } {
+    lappend headers "Proxy-Authorization" "Basic [make_base64 $proxylogin]"
+}
+
+set login [::vim::expr a:login]
+if { $login != "" } {
+    lappend headers "Authorization" "Basic [make_base64 $login]"
+}
+
+set parms [list]
+set keys [split [::vim::expr "keys(a:parms)"] "\n"]
+if { [llength $keys] > 0 } {
+    foreach key $keys {
+	lappend parms $key [::vim::expr "a:parms\['$key']"]
+    }
+    set query [eval [concat ::http::formatQuery $parms]]
+    set res [::http::geturl $url -headers $headers -query $query]
+} else {
+    set res [::http::geturl $url -headers $headers]
+}
+
+upvar #0 $res state
+
+if { $state(status) == "ok" } {
+    set output [string map {' ''} $state(body)]
+    ::vim::command "let output = '$output'"
+} else {
+    set error [string map {' ''} $state(error)]
+    ::vim::command "let error = '$error'"
+}
+EOF
+
+    return [error, output]
+endfunction
+
+" Find out which method we can use to fetch a web page.
+function! s:get_curl_method()
+    if !exists('s:curl_method')
+	let s:curl_method = 'curl'
+
+	if s:get_enable_perl() && has('perl')
+	    if s:check_perl()
+		let s:curl_method = 'perl'
+	    endif
+	elseif s:get_enable_python() && has('python')
+	    if s:check_python()
+		let s:curl_method = 'python'
+	    endif
+	elseif s:get_enable_ruby() && has('ruby')
+	    if s:check_ruby()
+		let s:curl_method = 'ruby'
+	    endif
+	elseif s:get_enable_tcl() && has('tcl')
+	    if s:check_tcl()
+		let s:curl_method = 'tcl'
+	    endif
+	endif
+    endif
+
+    return s:curl_method
+endfunction
+
+function! s:run_curl(url, login, proxy, proxylogin, parms)
+    return s:{s:get_curl_method()}_curl(a:url, a:login, a:proxy, a:proxylogin, a:parms)
+endfunction
+
+function! s:reset_curl_method()
+    if exists('s:curl_method')	
+	unlet s:curl_method
+    endif
+endfunction
+
+function! s:show_curl_method()
+    echo 'Method:' s:get_curl_method()
+endfunction
+
+" For debugging. Reset networking method.
+if !exists(":TwitVimResetMethod")
+    command TwitVimResetMethod :call <SID>reset_curl_method()
+endif
+
+" For debugging. Show current networking method.
+if !exists(":TwitVimShowMethod")
+    command TwitVimShowMethod :call <SID>show_curl_method()
+endif
+
+" === End of networking code ===
+
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
     if s:twit_buftype == "public" || s:twit_buftype == "friends" || s:twit_buftype == "user"
@@ -210,23 +654,25 @@ function! s:add_update(output)
     endif
 endfunction
 
-" URL-encode a string.
-function! s:url_encode(str)
-    return substitute(a:str, '[^a-zA-Z0-9_-]', '\=printf("%%%02X", char2nr(submatch(0)))', 'g')
+" Count number of characters in a multibyte string. Use technique from
+" :help strlen().
+function! s:mbstrlen(s)
+    return strlen(substitute(a:s, ".", "x", "g"))
 endfunction
 
 " Common code to post a message to Twitter.
 function! s:post_twitter(mesg, inreplyto)
-    " Get user-config variables twitvim_proxy and twitvim_login.
-    " We get these variables every time before posting to Twitter so that the
-    " user can change them on the fly.
-    let rc = s:get_config()
-    if rc < 0
+    let login = s:get_twitvim_login()
+    if login == ''
 	return -1
     endif
 
+    let parms = {}
+
     " Add in_reply_to_status_id if status ID is available.
-    let inreply = a:inreplyto == 0 ? '' : '-d in_reply_to_status_id='.s:url_encode(a:inreplyto)
+    if a:inreplyto != 0
+	let parms["in_reply_to_status_id"] = a:inreplyto
+    endif
 
     let mesg = a:mesg
 
@@ -237,36 +683,30 @@ function! s:post_twitter(mesg, inreplyto)
     " Convert internal newlines to spaces.
     let mesg = substitute(mesg, '\n', ' ', "g")
 
+    let mesglen = s:mbstrlen(mesg)
+
     " Check tweet length. Note that the tweet length should be checked before
     " URL-encoding the special characters because URL-encoding increases the
     " string length.
-    if strlen(mesg) > s:char_limit
-	redraw
-	echohl WarningMsg
-	echo "Your tweet has" strlen(mesg) - s:char_limit "too many characters. It was not sent."
-	echohl None
-    elseif strlen(mesg) < 1
-	redraw
-	echohl WarningMsg
-	echo "Your tweet was empty. It was not sent."
-	echohl None
+    if mesglen > s:char_limit
+	call s:warnmsg("Your tweet has ".(mesglen - s:char_limit)." too many characters. It was not sent.")
+    elseif mesglen < 1
+	call s:warnmsg("Your tweet was empty. It was not sent.")
     else
 	redraw
 	echo "Sending update to Twitter..."
 
-	let s:updatecmd = "curl -s ".s:proxy." ".s:login." ".inreply.' -d status="'.s:url_encode(mesg).'" '.s:get_api_root()."/statuses/update.xml?source=twitvim"
-	let output = system(s:updatecmd)
-	if v:shell_error != 0
-	    redraw
-	    echohl ErrorMsg
-	    echomsg "Error posting your tweet. Result code: ".v:shell_error
-	    echomsg "Output:"
-	    echomsg output
-	    echohl None
+	let url = s:get_api_root()."/statuses/update.xml?source=twitvim"
+	let parms["status"] = mesg
+
+	let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), parms)
+
+	if error != ''
+	    call s:errormsg("Error posting your tweet: ".error)
 	else
 	    call s:add_update(output)
 	    redraw
-	    echo "Your tweet was sent. You used" strlen(mesg) "characters."
+	    echo "Your tweet was sent. You used ".mesglen." characters."
 	endif
     endif
 endfunction
@@ -277,8 +717,8 @@ function! s:CmdLine_Twitter(initstr, inreplyto)
     " Do this here too to check for twitvim_login. This is to avoid having the
     " user type in the message only to be told that his configuration is
     " incomplete.
-    let rc = s:get_config()
-    if rc < 0
+    let login = s:get_twitvim_login()
+    if login == ''
 	return -1
     endif
 
@@ -317,7 +757,12 @@ endfunction
 " Extract the tweet text from a timeline buffer line.
 function! s:get_tweet(line)
     let line = substitute(a:line, '^\w\+:\s\+', '', '')
-    return substitute(line, '\s\+|[^|]\+|$', '', '')
+    let line = substitute(line, '\s\+|[^|]\+|$', '', '')
+
+    " Remove newlines.
+    let line = substitute(line, "\n", '', 'g')
+
+    return line
 endfunction
 
 " Retweet is for replicating a tweet from another user.
@@ -368,11 +813,7 @@ function! s:launch_browser(url)
     if !exists('g:twitvim_browser_cmd') || g:twitvim_browser_cmd == ''
 	" Beep and error-highlight 
 	execute "normal \<Esc>"
-	redraw
-	echohl ErrorMsg
-	echomsg 'Browser cmd not set.'
-	    \ 'Please add to .vimrc: let twitvim_browser_cmd="browsercmd"'
-	echohl None
+	call s:errormsg('Browser cmd not set. Please add to .vimrc: let twitvim_browser_cmd="browsercmd"')
 	return -1
     endif
 
@@ -390,11 +831,7 @@ function! s:launch_browser(url)
 	redraw
 	echo "Web browser launched."
     else
-	execute "normal \<Esc>"
-	redraw
-	echohl ErrorMsg
-	echomsg 'Error launching browser:' v:errmsg
-	echohl None
+	call s:errormsg('Error launching browser: '.v:errmsg)
     endif
 endfunction
 
@@ -429,6 +866,52 @@ function! s:launch_url_cword()
 
     let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
     call s:launch_browser(s)
+endfunction
+
+" Call LongURL API on a shorturl to expand it.
+function! s:call_longurl(url)
+    redraw
+    echo "Sending request to LongURL..."
+
+    let url = 'http://api.longurl.org/v1/expand?url='.s:url_encode(a:url)
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	call s:errormsg("Error calling LongURL API: ".error)
+	return ""
+    else
+	redraw
+	echo "Received response from LongURL."
+
+	let longurl = s:xml_get_element(output, 'long_url')
+	if longurl != ""
+	    return longurl
+	endif
+
+	let errormsg = s:xml_get_element(output, 'error')
+	if errormsg != ""
+	    call s:errormsg("LongURL error: ".errormsg)
+	    return ""
+	endif
+
+	call s:errormsg("Unknown response from LongURL: ".output)
+	return ""
+    endif
+endfunction
+
+" Call LongURL API on the given string. If no string is provided, use the
+" current word. In the latter case, this function will try to recognize a URL
+" within the word. Otherwise, it'll just use the whole word.
+function! s:do_longurl(s)
+    let s = a:s
+    if s == ""
+	let s = expand("<cWORD>")
+	let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
+    endif
+    let result = s:call_longurl(s)
+    if result != ""
+	redraw
+	echo s.' expands to '.result
+    endif
 endfunction
 
 " Decode HTML entities. Twitter gives those to us a little weird. For example,
@@ -517,6 +1000,10 @@ function! s:twitter_win()
 
 	" Retweet feature for replicating another user's tweet.
 	nnoremap <buffer> <silent> <Leader>R :call <SID>Retweet()<cr>
+
+	" Call LongURL API on current word or selection.
+	nnoremap <buffer> <silent> <Leader>e :call <SID>do_longurl("")<cr>
+	vnoremap <buffer> <silent> <Leader>e y:call <SID>do_longurl(@")<cr>
     endif
 
     call s:twitter_win_syntax()
@@ -559,7 +1046,7 @@ function! s:show_timeline(timeline, page)
     " the title. Then the syntax highlighter hides the stars by coloring them
     " the same as the background. It is a bad hack.
     call add(text, title.'*')
-    call add(text, repeat('=', strlen(title)).'*')
+    call add(text, repeat('=', s:mbstrlen(title)).'*')
 
     while 1
 	let item = s:xml_get_nth(a:timeline, 'item', matchcount)
@@ -586,24 +1073,16 @@ if !exists(":TwitVimShowStatuses")
     command TwitVimShowStatuses :echo s:statuses
 endif
 
-" For debugging. Show cURL command for the last update.
-if !exists(":TwitVimShowLastUpdate")
-    command TwitVimShowLastUpdate :echo s:updatecmd
-endif
-
 " Generic timeline retrieval function.
 function! s:get_timeline(tline_name, username, page)
-    let login = ""
     if a:tline_name == "public"
-	" No authentication is needed for public timeline so just get the proxy
-	" info.
-	call s:get_config_proxy()
+	" No authentication is needed for public timeline.
+	let login = ''
     else
-	let rc = s:get_config()
-	if rc < 0
+	let login = s:get_twitvim_login()
+	if login == ''
 	    return -1
 	endif
-	let login = s:login
     endif
 
     " Twitter API allows you to specify a username for user timeline and
@@ -619,14 +1098,13 @@ function! s:get_timeline(tline_name, username, page)
 
     redraw
     echo "Sending" a:tline_name "timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".login." ".s:get_api_root()."/statuses/".url_fname)
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error getting Twitter" a:tline_name "timeline. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = s:get_api_root()."/statuses/".url_fname
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error getting Twitter ".a:tline_name." timeline: ".error)
 	return
     endif
 
@@ -659,7 +1137,7 @@ function! s:show_dm_xml(sent_or_recv, timeline, page)
     " the title. Then the syntax highlighter hides the stars by coloring them
     " the same as the background. It is a bad hack.
     call add(text, title.'*')
-    call add(text, repeat('=', strlen(title)).'*')
+    call add(text, repeat('=', s:mbstrlen(title)).'*')
 
     while 1
 	let item = s:xml_get_nth(a:timeline, 'direct_message', matchcount)
@@ -680,8 +1158,8 @@ endfunction
 
 " Get direct messages sent to user.
 function! s:Direct_Messages(page)
-    let rc = s:get_config()
-    if rc < 0
+    let login = s:get_twitvim_login()
+    if login == ''
 	return -1
     endif
 
@@ -693,14 +1171,13 @@ function! s:Direct_Messages(page)
 
     redraw
     echo "Sending direct message timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".s:login." ".s:get_api_root()."/direct_messages.xml".pagearg)
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error getting Twitter direct messages. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = s:get_api_root()."/direct_messages.xml".pagearg
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error getting Twitter direct messages: ".error)
 	return
     endif
 
@@ -712,8 +1189,8 @@ endfunction
 
 " Get direct messages sent by user.
 function! s:Direct_Messages_Sent(page)
-    let rc = s:get_config()
-    if rc < 0
+    let login = s:get_twitvim_login()
+    if login == ''
 	return -1
     endif
 
@@ -725,14 +1202,13 @@ function! s:Direct_Messages_Sent(page)
 
     redraw
     echo "Sending direct messages sent timeline request to Twitter..."
-    let output = system("curl -s ".s:proxy." ".s:login." ".s:get_api_root()."/direct_messages/sent.xml".pagearg)
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error getting Twitter direct messages sent timeline. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = s:get_api_root()."/direct_messages/sent.xml".pagearg
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error getting Twitter direct messages sent timeline: ".error)
 	return
     endif
 
@@ -771,17 +1247,13 @@ nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public", '',
 
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to Tweetburner..."
-    let output = system('curl -s '.s:proxy.' -d link[url]="'.s:url_encode(a:url).'" http://tweetburner.com/links')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling Tweetburner API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let [error, output] = s:run_curl('http://tweetburner.com/links', '', s:get_proxy(), s:get_proxy_login(), {'link[url]' : a:url})
+
+    if error != ''
+	call s:errormsg("Error calling Tweetburner API: ".error)
 	return ""
     else
 	redraw
@@ -792,17 +1264,15 @@ endfunction
 
 " Call SnipURL API to shorten a URL.
 function! s:call_snipurl(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to SnipURL..."
-    let output = system('curl -s '.s:proxy.' "http://snipr.com/site/snip?r=simple&link='.s:url_encode(a:url).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling SnipURL API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = 'http://snipr.com/site/snip?r=simple&link='.s:url_encode(a:url)
+
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling SnipURL API: ".error)
 	return ""
     else
 	redraw
@@ -814,17 +1284,13 @@ endfunction
 
 " Call Metamark API to shorten a URL.
 function! s:call_metamark(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to Metamark..."
-    let output = system('curl -s '.s:proxy.' -d long_url="'.s:url_encode(a:url).'" http://metamark.net/api/rest/simple')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling Metamark API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let [error, output] = s:run_curl('http://metamark.net/api/rest/simple', '', s:get_proxy(), s:get_proxy_login(), {'long_url' : a:url})
+
+    if error != ''
+	call s:errormsg("Error calling Metamark API: ".error)
 	return ""
     else
 	redraw
@@ -835,17 +1301,14 @@ endfunction
 
 " Call TinyURL API to shorten a URL.
 function! s:call_tinyurl(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to TinyURL..."
-    let output = system('curl -s '.s:proxy.' "http://tinyurl.com/api-create.php?url='.a:url.'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling TinyURL API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = 'http://tinyurl.com/api-create.php?url='.a:url
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling TinyURL API: ".error)
 	return ""
     else
 	redraw
@@ -854,40 +1317,16 @@ function! s:call_tinyurl(url)
     endif
 endfunction
 
-" Call urlTea API to shorten a URL.
-function! s:call_urltea(url)
-    call s:get_config_proxy()
-    redraw
-    echo "Sending request to urlTea..."
-    let output = system('curl -s '.s:proxy.' "http://urltea.com/api/text/?url='.s:url_encode(a:url).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling urlTea API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
-	return ""
-    else
-	redraw
-	echo "Received response from urlTea."
-	return output
-    endif
-endfunction
-
 " Call bit.ly API to shorten a URL.
 function! s:call_bitly(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to bit.ly..."
-    let output = system('curl -s '.s:proxy.' "http://bit.ly/api?url='.s:url_encode(a:url).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling bit.ly API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = 'http://bit.ly/api?url='.s:url_encode(a:url)
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling bit.ly API: ".error)
 	return ""
     else
 	redraw
@@ -898,17 +1337,14 @@ endfunction
 
 " Call is.gd API to shorten a URL.
 function! s:call_isgd(url)
-    call s:get_config_proxy()
     redraw
     echo "Sending request to is.gd..."
-    let output = system('curl -s '.s:proxy.' "http://is.gd/api.php?longurl='.s:url_encode(a:url).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling is.gd API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = 'http://is.gd/api.php?longurl='.s:url_encode(a:url)
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling is.gd API: ".error)
 	return ""
     else
 	redraw
@@ -926,26 +1362,20 @@ endfunction
 
 " Call urlBorg API to shorten a URL.
 function! s:call_urlborg(url)
-    call s:get_config_proxy()
     let key = s:get_urlborg_key()
     redraw
     echo "Sending request to urlBorg..."
-    let output = system('curl -s '.s:proxy.' "http://urlborg.com/api/'.key.'/create_or_reuse/'.s:url_encode(a:url).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error calling urlBorg API. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+
+    let url = 'http://urlborg.com/api/'.key.'/create_or_reuse/'.s:url_encode(a:url)
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling urlBorg API: ".error)
 	return ""
     else
 	let matchres = matchlist(output, '^http')
 	if matchres == []
-	    redraw
-	    echohl ErrorMsg
-	    echomsg "urlBorg error: ".output
-	    echohl None
+	    call s:errormsg("urlBorg error: ".output)
 	    return ""
 	else
 	    redraw
@@ -970,10 +1400,7 @@ function! s:GetShortURL(tweetmode, url, shortfn)
     endif
 
     if url == ""
-	redraw
-	echohl WarningMsg
-	echo "No URL provided."
-	echohl None
+	call s:warnmsg("No URL provided.")
 	return
     endif
 
@@ -1027,16 +1454,6 @@ if !exists(":ATinyURL")
 endif
 if !exists(":PTinyURL")
     command -nargs=? PTinyURL :call <SID>GetShortURL("cmdline", <q-args>, "call_tinyurl")
-endif
-
-if !exists(":UrlTea")
-    command -nargs=? UrlTea :call <SID>GetShortURL("insert", <q-args>, "call_urltea")
-endif
-if !exists(":AUrlTea")
-    command -nargs=? AUrlTea :call <SID>GetShortURL("append", <q-args>, "call_urltea")
-endif
-if !exists(":PUrlTea")
-    command -nargs=? PUrlTea :call <SID>GetShortURL("cmdline", <q-args>, "call_urltea")
 endif
 
 if !exists(":BitLy")
@@ -1109,19 +1526,14 @@ endfunction
 
 " Query Twitter Search API and retrieve results
 function! s:get_summize(query)
-    call s:get_config_proxy()
-
     redraw
     echo "Sending search request to Twitter Search..."
 
-    let output = system("curl -s ".s:proxy.' "http://search.twitter.com/search.atom?rpp=25&q='.s:url_encode(a:query).'"')
-    if v:shell_error != 0
-	redraw
-	echohl ErrorMsg
-	echomsg "Error getting search results from Twitter Search. Result code: ".v:shell_error
-	echomsg "Output:"
-	echomsg output
-	echohl None
+    let url = 'http://search.twitter.com/search.atom?rpp=25&q='.s:url_encode(a:query)
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error querying Twitter Search: ".error)
 	return
     endif
 
@@ -1144,10 +1556,7 @@ function! s:Summize(query)
     endif
 
     if query == ""
-	redraw
-	echohl WarningMsg
-	echo "No query provided for Twitter Search."
-	echohl None
+	call s:warnmsg("No query provided for Twitter Search.")
 	return
     endif
 

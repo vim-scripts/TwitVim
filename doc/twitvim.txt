@@ -28,6 +28,11 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	3.1. Base64-Encoded Login.................: |TwitVim-login-base64|
 	     twitvim_login_b64....................: |twitvim_login_b64|
 	     twitvim_proxy_login_b64..............: |twitvim_proxy_login_b64|
+	3.2. Alternatives to cURL.................: |TwitVim-non-cURL|
+	     twitvim_enable_perl..................: |twitvim_enable_perl|
+	     twitvim_enable_python................: |twitvim_enable_python|
+	     twitvim_enable_ruby..................: |twitvim_enable_ruby|
+	     twitvim_enable_tcl...................: |twitvim_enable_tcl|
 	4. Manual.................................: |TwitVim-manual|
 	4.1. Update Commands......................: |TwitVim-update-commands|
 	     :PosttoTwitter.......................: |:PosttoTwitter|
@@ -56,6 +61,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     Alt-G................................: |TwitVim-A-g|
 	     <Leader>g............................: |TwitVim-Leader-g|
 	     twitvim_browser_cmd..................: |twitvim_browser_cmd|
+	     LongURL Feature......................: |TwitVim-LongURL|
+	     <Leader>e............................: |TwitVim-Leader-e|
 	4.4. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
@@ -69,9 +76,6 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :TinyURL.............................: |:TinyURL|
 	     :ATinyURL............................: |:ATinyURL|
 	     :PTinyURL............................: |:PTinyURL|
-	     :UrlTea..............................: |:UrlTea|
-	     :AUrlTea.............................: |:AUrlTea|
-	     :PUrlTea.............................: |:PUrlTea|
 	     :BitLy...............................: |:BitLy|
 	     :ABitLy..............................: |:ABitLy|
 	     :PBitLy..............................: |:PBitLy|
@@ -118,6 +122,10 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	http://curl.haxx.se/. Make sure that the curl executable is in a
 	directory listed in your PATH environment variable, or the equivalent
 	for your system.
+
+	If you have the Perl, Python, Ruby, or Tcl interfaces, you may use one
+	of those instead of installing cURL. See |TwitVim-non-cURL| for
+	setup details.
 
 
 	2. twitvim.vim					*TwitVim-add*
@@ -221,6 +229,92 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 		let twitvim_login_b64 = "am9ldXNlcjpqb2VwYXNzd29yZA=="
 
 	And his setup is ready.
+
+
+------------------------------------------------------------------------------
+3.2. Alternatives to cURL				*TwitVim-non-cURL*
+
+	TwitVim supports http networking through Vim's Perl, Python, Ruby, and
+	Tcl interfaces, so if you have any of those interfaces compiled into
+	your Vim program, you can use that instead of cURL.
+	
+	Generally, it is slightly faster to use one of those scripting
+	interfaces for networking because it avoids running an external
+	program. On Windows, it also avoids a brief taskbar flash when cURL
+	runs.
+
+	To find out if you have those interfaces, use the |:version| command
+	and check the |+feature-list|. Then to enable this special http
+	networking code in TwitVim, add one of the following lines to your
+	vimrc:
+
+		let twitvim_enable_perl = 1
+		let twitvim_enable_python = 1
+		let twitvim_enable_ruby = 1
+		let twitvim_enable_tcl = 1
+
+	You can enable more than one scripting language but TwitVim will only
+	use the first one it finds.
+
+
+	1. Perl interface				*twitvim_enable_perl*
+
+	To enable TwitVim's Perl networking code, add the following to your
+	vimrc:
+
+		let twitvim_enable_perl = 1
+
+	TwitVim requires the MIME::Base64 and LWP::UserAgent modules. If you
+	have ActivePerl, these modules are included in the default
+	installation.
+
+
+	2. Python interface				*twitvim_enable_python*
+
+	To enable TwitVim's Python networking code, add the following to your
+	vimrc:
+
+		let twitvim_enable_python = 1
+
+	TwitVim requires the urllib, urllib2, and base64 modules. These
+	modules are in the Python standard library.
+
+
+	3. Ruby interface				*twitvim_enable_ruby*
+
+	To enable TwitVim's Ruby networking code, add the following to your
+	vimrc:
+
+		let twitvim_enable_ruby = 1
+
+	TwitVim requires the net/http, uri, and Base64 modules. These modules
+	are in the Ruby standard library.
+
+	In addition, TwitVim requires a Vim patch to fix an if_ruby networking
+	problem. See the following message:
+
+	http://www.mail-archive.com/vim_dev@googlegroups.com/msg03693.html
+
+	and also Bram's correction to the patch:
+
+	http://www.mail-archive.com/vim_dev@googlegroups.com/msg03713.html
+
+
+	3. Tcl interface				*twitvim_enable_tcl*
+
+	To enable TwitVim's Tcl networking code, add the following to your
+	vimrc:
+
+		let twitvim_enable_tcl = 1
+
+	TwitVim requires the http, uri, and base64 modules. uri and base64 are
+	in the Tcllib library so you may need to install that. See
+	http://tcllib.sourceforge.net/
+
+	If you have ActiveTcl 8.5, the default installation does not include
+	Tcllib. Run the following command from the shell to add Tcllib:
+
+		teacup install tcllib
 
 
 ==============================================================================
@@ -388,7 +482,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	This mapping is local to the timeline buffer. It launches the web
 	browser with the URL at the cursor position. If you visually select
 	text before invoking this mapping, it launches the web browser with
-	the selected text.
+	the selected text as is.
 
 	As a special case, if the cursor is on a word of the form @user or
 	user:, TwitVim will display that user's timeline in the timeline
@@ -405,6 +499,22 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 		let twitvim_browser_cmd = 'firefox.exe'
 
 	Of course, replace firefox.exe with the browser of your choice.
+
+
+							*TwitVim-LongURL*
+	<Leader>e					*TwitVim-Leader-e*
+
+	This mapping is local to the timeline buffer. It calls the LongURL API
+	(see http://longurl.org/) to expand the short URL at the cursor
+	position. A short URL is a URL from a URL shortening service such as
+	TinyURL, SnipURL, etc. Use this feature if you wish to preview a URL
+	before browsing to it with |TwitVim-goto|.
+	
+	If you visually select text before invoking this mapping, it calls the
+	LongURL API with the selected text as is.
+
+	If successful, TwitVim will display the result from LongURL in the
+	message area.
 
 
 ------------------------------------------------------------------------------
@@ -503,30 +613,6 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	:PTinyURL {url}
 	
 	Same as :TinyURL but prompts for a tweet on the command line with
-	the short URL already inserted.
-
-
-	:UrlTea						*:UrlTea*
-	:UrlTea {url}
-
-	UrlTea is a URL forwarding and shortening service. See
-	http://urltea.com
-
-	This command calls the UrlTea API to get a short URL in place of
-	<url>. If {url} is not provided on the command line, the command will
-	prompt you to enter a URL. The short URL is then inserted into the
-	current buffer at the current position.
-
-	:AUrlTea					*:AUrlTea*
-	:AUrlTea {url}
-
-	Same as :UrlTea but appends, i.e. inserts after the current
-	position instead of at the current position,  the short URL instead.
-
-	:PUrlTea					*:PUrlTea*
-	:PUrlTea {url}
-	
-	Same as :UrlTea but prompts for a tweet on the command line with
 	the short URL already inserted.
 
 
@@ -719,6 +805,14 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 ==============================================================================
 7. TwitVim History					*TwitVim-history*
 
+	0.3.1 : 2008-09-18 * Added support for LongURL.
+			   * Added support for posting multibyte/Unicode
+			     tweets in cURL mode.
+			   * Remove newlines from text before retweeting.
+	0.3.0 : 2008-09-12 * Added support for http networking through Vim's
+			     Perl, Python, Ruby, and Tcl interfaces, as
+			     alternatives to cURL.
+			   * Removed UrlTea support.
 	0.2.24 : 2008-08-28 * Added retweet feature. See |TwitVim-retweet|
 	0.2.23 : 2008-08-25 * Support in_reply_to_status_id parameter.
 			    * Added tip on line length in statusline.
