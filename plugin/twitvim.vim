@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.3.1
+" Version: 0.3.2
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: September 18, 2008
+" Last updated: September 30, 2008
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -21,9 +21,6 @@ let loaded_twitvim = 1
 " Avoid side-effects from cpoptions setting.
 let s:save_cpo = &cpo
 set cpo&vim
-
-let s:proxy = ""
-let s:login = ""
 
 " The extended character limit is 246. Twitter will display a tweet longer than
 " 140 characters in truncated form with a link to the full tweet. If that is
@@ -116,7 +113,7 @@ endfunction
 
 " Get the content of the n'th element in a series of elements.
 function! s:xml_get_nth(xmlstr, elem, n)
-    let matchres = matchlist(a:xmlstr, '<'.a:elem.'>\(.\{-}\)</'.a:elem.'>', -1, a:n)
+    let matchres = matchlist(a:xmlstr, '<'.a:elem.'\%( [^>]*\)\?>\(.\{-}\)</'.a:elem.'>', -1, a:n)
     return matchres == [] ? "" : matchres[1]
 endfunction
 
@@ -129,6 +126,35 @@ endfunction
 " sub-elements so that you can parse the remaining elements safely.
 function! s:xml_remove_elements(xmlstr, elem)
     return substitute(a:xmlstr, '<'.a:elem.'>.\{-}</'.a:elem.'>', '', "g")
+endfunction
+
+" Get the attributes of the n'th element in a series of elements.
+function! s:xml_get_attr_nth(xmlstr, elem, n)
+    let matchres = matchlist(a:xmlstr, '<'.a:elem.'\s\+\([^>]*\)>', -1, a:n)
+    if matchres == []
+	return {}
+    endif
+
+    let matchcount = 1
+    let attrstr = matchres[1]
+    let attrs = {}
+
+    while 1
+	let matchres = matchlist(attrstr, '\(\w\+\)="\([^"]*\)"', -1, matchcount)
+	if matchres == []
+	    break
+	endif
+
+	let attrs[matchres[1]] = matchres[2]
+	let matchcount += 1
+    endwhile
+
+    return attrs
+endfunction
+
+" Get attributes of the specified element.
+function! s:xml_get_attr(xmlstr, elem)
+    return s:xml_get_attr_nth(a:xmlstr, a:elem, 1)
 endfunction
 
 " === End of XML helper functions ===
@@ -195,6 +221,12 @@ function! s:parse_time(str)
 	
     " This timestamp format is used by Twitter Search.
     let matchres = matchlist(a:str, '^\(\d\+\)-\(\d\+\)-\(\d\+\)T\(\d\+\):\(\d\+\):\(\d\+\)Z$')
+    if matchres != []
+	return s:timegm2(matchres, range(1, 6))
+    endif
+
+    " This timestamp format is used by Twitter Rate Limit.
+    let matchres = matchlist(a:str, '^\(\d\+\)-\(\d\+\)-\(\d\+\)T\(\d\+\):\(\d\+\):\(\d\+\)+00:00$')
     if matchres != []
 	return s:timegm2(matchres, range(1, 6))
     endif
@@ -562,12 +594,23 @@ if { [llength $keys] > 0 } {
 upvar #0 $res state
 
 if { $state(status) == "ok" } {
-    set output [string map {' ''} $state(body)]
-    ::vim::command "let output = '$output'"
+    if { [ ::http::ncode $res ] >= 400 } {
+	set error $state(http)
+	::vim::command "let error = '$error'"
+    } else {
+	set output [string map {' ''} $state(body)]
+	::vim::command "let output = '$output'"
+    }
 } else {
-    set error [string map {' ''} $state(error)]
+    if { [ info exists state(error) ] } {
+	set error [string map {' ''} $state(error)]
+    } else {
+	set error "$state(status) error"
+    }
     ::vim::command "let error = '$error'"
 }
+
+::http::cleanup $res
 EOF
 
     return [error, output]
@@ -914,6 +957,29 @@ function! s:do_longurl(s)
     endif
 endfunction
 
+" Get info on the given user. If no user is provided, use the current word and
+" strip off the @ or : if the current word is @user or user:. 
+function! s:do_user_info(s)
+    let s = a:s
+    if s == ''
+	let s = expand("<cword>")
+	
+	" Handle @-replies.
+	let matchres = matchlist(s, '^@\(\w\+\)')
+	if matchres != []
+	    let s = matchres[1]
+	else
+	    " Handle username: at the beginning of the line.
+	    let matchres = matchlist(s, '^\(\w\+\):$')
+	    if matchres != []
+		let s = matchres[1]
+	    endif
+	endif
+    endif
+
+    call s:get_user_info(s)
+endfunction
+
 " Decode HTML entities. Twitter gives those to us a little weird. For example,
 " a '<' character comes to us as &amp;lt;
 function! s:convert_entity(str)
@@ -930,7 +996,7 @@ let s:twit_winname = "Twitter_".localtime()
 let s:twit_buftype = ""
 
 " Set syntax highlighting in timeline window.
-function! s:twitter_win_syntax()
+function! s:twitter_win_syntax(wintype)
     " Beautify the Twitter window with syntax highlighting.
     if has("syntax") && exists("g:syntax_on") && !has("syntax_items")
 
@@ -954,10 +1020,12 @@ function! s:twitter_win_syntax()
 	" character.
 	syntax match twitterLink "\S\@<!#\w\+"
 
-	" Use the extra star at the end to recognize the title but hide the
-	" star.
-	syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
-	syntax match twitterTitleStar /\*$/ contained
+	if a:wintype != "userinfo"
+	    " Use the extra star at the end to recognize the title but hide the
+	    " star.
+	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	    syntax match twitterTitleStar /\*$/ contained
+	endif
 
 	highlight default link twitterUser Identifier
 	highlight default link twitterTime String
@@ -971,12 +1039,14 @@ endfunction
 
 " Switch to the Twitter window if there is already one or open a new window for
 " Twitter.
-function! s:twitter_win()
-    let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
+function! s:twitter_win(wintype)
+    let winname = a:wintype == "userinfo" ? s:user_winname : s:twit_winname
+
+    let twit_bufnr = bufwinnr('^'.winname.'$')
     if twit_bufnr > 0
 	execute twit_bufnr . "wincmd w"
     else
-	execute "new " . s:twit_winname
+	execute "new " . winname
 	setlocal noswapfile
 	setlocal buftype=nofile
 	setlocal bufhidden=delete 
@@ -984,34 +1054,42 @@ function! s:twitter_win()
 	setlocal nobuflisted
 	setlocal nospell
 
-	" Quick reply feature for replying from the timeline.
-	nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
-	nnoremap <buffer> <silent> <Leader>r :call <SID>Quick_Reply()<cr>
-
-	" Quick DM feature for direct messaging from the timeline.
-	nnoremap <buffer> <silent> <A-d> :call <SID>Quick_DM()<cr>
-	nnoremap <buffer> <silent> <Leader>d :call <SID>Quick_DM()<cr>
-
 	" Launch browser with URL in visual selection or at cursor position.
 	nnoremap <buffer> <silent> <A-g> :call <SID>launch_url_cword()<cr>
 	nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword()<cr>
 	vnoremap <buffer> <silent> <A-g> y:call <SID>launch_browser(@")<cr>
 	vnoremap <buffer> <silent> <Leader>g y:call <SID>launch_browser(@")<cr>
 
-	" Retweet feature for replicating another user's tweet.
-	nnoremap <buffer> <silent> <Leader>R :call <SID>Retweet()<cr>
+	" Get user info for current word or selection.
+	nnoremap <buffer> <silent> <Leader>p :call <SID>do_user_info("")<cr>
+	vnoremap <buffer> <silent> <Leader>p y:call <SID>do_user_info(@")<cr>
 
 	" Call LongURL API on current word or selection.
 	nnoremap <buffer> <silent> <Leader>e :call <SID>do_longurl("")<cr>
 	vnoremap <buffer> <silent> <Leader>e y:call <SID>do_longurl(@")<cr>
+
+	if a:wintype != "userinfo"
+
+	    " Quick reply feature for replying from the timeline.
+	    nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
+	    nnoremap <buffer> <silent> <Leader>r :call <SID>Quick_Reply()<cr>
+
+	    " Quick DM feature for direct messaging from the timeline.
+	    nnoremap <buffer> <silent> <A-d> :call <SID>Quick_DM()<cr>
+	    nnoremap <buffer> <silent> <Leader>d :call <SID>Quick_DM()<cr>
+
+	    " Retweet feature for replicating another user's tweet.
+	    nnoremap <buffer> <silent> <Leader>R :call <SID>Retweet()<cr>
+
+	endif
     endif
 
-    call s:twitter_win_syntax()
+    call s:twitter_win_syntax(a:wintype)
 endfunction
 
 " Get a Twitter window and stuff text into it.
-function! s:twitter_wintext(text)
-    call s:twitter_win()
+function! s:twitter_wintext(text, wintype)
+    call s:twitter_win(a:wintype)
 
     set modifiable
 
@@ -1065,7 +1143,7 @@ function! s:show_timeline(timeline, page)
 
 	let matchcount += 1
     endwhile
-    call s:twitter_wintext(text)
+    call s:twitter_wintext(text, "timeline")
 endfunction
 
 " For debugging. Show list of status IDs.
@@ -1103,6 +1181,12 @@ function! s:get_timeline(tline_name, username, page)
 
     let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
 
+    if error != ''
+	call s:errormsg("Error getting Twitter ".a:tline_name." timeline: ".error)
+	return
+    endif
+
+    let error = s:xml_get_element(output, 'error')
     if error != ''
 	call s:errormsg("Error getting Twitter ".a:tline_name." timeline: ".error)
 	return
@@ -1153,7 +1237,7 @@ function! s:show_dm_xml(sent_or_recv, timeline, page)
 
 	let matchcount += 1
     endwhile
-    call s:twitter_wintext(text)
+    call s:twitter_wintext(text, "timeline")
 endfunction
 
 " Get direct messages sent to user.
@@ -1244,6 +1328,140 @@ nnoremenu Plugin.TwitVim.&Replies\ Timeline :call <SID>get_timeline("replies", '
 nnoremenu Plugin.TwitVim.&Direct\ Messages :call <SID>Direct_Messages(1)<cr>
 nnoremenu Plugin.TwitVim.Direct\ Messages\ &Sent :call <SID>Direct_Messages_Sent(1)<cr>
 nnoremenu Plugin.TwitVim.&Public\ Timeline :call <SID>get_timeline("public", '', 1)<cr>
+
+
+" Call Twitter API to get rate limit information.
+function! s:get_rate_limit()
+    let login = s:get_twitvim_login()
+    if login == ''
+	return -1
+    endif
+
+    redraw
+    echo "Querying Twitter for rate limit information..."
+
+    let url = s:get_api_root()."/account/rate_limit_status.xml"
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	call s:errormsg("Error getting rate limit info: ".error)
+	return
+    endif
+
+    let error = s:xml_get_element(output, 'error')
+    if error != ''
+	call s:errormsg("Error getting rate limit info: ".error)
+	return
+    endif
+
+    let remaining = s:xml_get_element(output, 'remaining-hits')
+    let resettime = s:time_filter(s:xml_get_element(output, 'reset-time'))
+    let limit = s:xml_get_element(output, 'hourly-limit')
+
+    redraw
+    echo "Rate limit: ".limit." Remaining: ".remaining." Reset at: ".resettime
+endfunction
+
+if !exists(":RateLimitTwitter")
+    command RateLimitTwitter :call <SID>get_rate_limit()
+endif
+
+" Set location field on Twitter profile.
+function! s:set_location(loc)
+    let login = s:get_twitvim_login()
+    if login == ''
+	return -1
+    endif
+
+    redraw
+    echo "Setting location on Twitter profile..."
+
+    let url = s:get_api_root()."/account/update_location.xml"
+    let parms = { 'location' : a:loc }
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), parms)
+    if error != ''
+	call s:errormsg("Error setting location: ".error)
+	return
+    endif
+
+    let error = s:xml_get_element(output, 'error')
+    if error != ''
+	call s:errormsg("Error setting location: ".error)
+	return
+    endif
+
+    redraw
+    echo "Location: ".s:xml_get_element(output, 'location')
+endfunction
+
+if !exists(":LocationTwitter")
+    command -nargs=+ LocationTwitter :call <SID>set_location(<q-args>)
+endif
+
+let s:user_winname = "TwitterUserInfo_".localtime()
+
+" Process/format the user information.
+function! s:format_user_info(output)
+    let text = []
+    let output = a:output
+
+    let name = s:xml_get_element(output, 'name')
+    let screen = s:xml_get_element(output, 'screen_name')
+    call add(text, 'Name: '.screen.' ('.name.')')
+
+    call add(text, 'Location: '.s:xml_get_element(output, 'location'))
+    call add(text, 'Website: '.s:xml_get_element(output, 'url'))
+    call add(text, 'Bio: '.s:xml_get_element(output, 'description'))
+    call add(text, '')
+    call add(text, 'Following: '.s:xml_get_element(output, 'friends_count'))
+    call add(text, 'Followers: '.s:xml_get_element(output, 'followers_count'))
+    call add(text, 'Updates: '.s:xml_get_element(output, 'statuses_count'))
+    call add(text, '')
+
+    let status = s:xml_get_element(output, 'text')
+    let pubdate = s:time_filter(s:xml_get_element(output, 'created_at'))
+    call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
+    return text
+endfunction
+
+" Call Twitter API to get user's info.
+function! s:get_user_info(username)
+    let login = s:get_twitvim_login()
+    if login == ''
+	return -1
+    endif
+
+    if a:username == ''
+	call s:errormsg("Please specify a user name to retrieve info on.")
+	return
+    endif
+
+    redraw
+    echo "Querying Twitter for user information..."
+
+    let url = s:get_api_root()."/users/show/".a:username.".xml"
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	call s:errormsg("Error getting user info: ".error)
+	return
+    endif
+
+    let error = s:xml_get_element(output, 'error')
+    if error != ''
+	call s:errormsg("Error getting user info: ".error)
+	return
+    endif
+
+    call s:twitter_wintext(s:format_user_info(output), "userinfo")
+
+    redraw
+    echo "User information retrieved."
+endfunction
+
+if !exists(":ProfileTwitter")
+    command -nargs=1 ProfileTwitter :call <SID>get_user_info(<q-args>)
+endif
+
 
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
@@ -1386,6 +1604,39 @@ function! s:call_urlborg(url)
 endfunction
 
 
+" Get tr.im login info if configured by the user.
+function! s:get_trim_login()
+    return exists('g:twitvim_trim_login') ? g:twitvim_trim_login : ''
+endfunction
+
+" Call tr.im API to shorten a URL.
+function! s:call_trim(url)
+    let login = s:get_trim_login()
+
+    let url = 'http://tr.im/api/trim_url.xml?url='.s:url_encode(a:url)
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
+
+    if error != ''
+	call s:errormsg("Error calling tr.im API: ".error)
+	return ""
+    endif
+
+    let statusattr = s:xml_get_attr(output, 'status')
+
+    let trimmsg = statusattr['code'].' '.statusattr['message']
+
+    if statusattr['result'] == "OK"
+	return s:xml_get_element(output, 'url')
+    elseif statusattr['result'] == "ERROR"
+	call s:errormsg("tr.im error: ".trimmsg)
+	return ""
+    else
+	call s:errormsg("Unknown result from tr.im: ".trimmsg)
+	return ""
+    endif
+endfunction
+
 " Invoke URL shortening service to shorten a URL and insert it at the current
 " position in the current buffer.
 function! s:GetShortURL(tweetmode, url, shortfn)
@@ -1486,6 +1737,16 @@ if !exists(":PUrlBorg")
     command -nargs=? PUrlBorg :call <SID>GetShortURL("cmdline", <q-args>, "call_urlborg")
 endif
 
+if !exists(":Trim")
+    command -nargs=? Trim :call <SID>GetShortURL("insert", <q-args>, "call_trim")
+endif
+if !exists(":ATrim")
+    command -nargs=? ATrim :call <SID>GetShortURL("append", <q-args>, "call_trim")
+endif
+if !exists(":PTrim")
+    command -nargs=? PTrim :call <SID>GetShortURL("cmdline", <q-args>, "call_trim")
+endif
+
 " Parse and format search results from Twitter Search API.
 function! s:show_summize(searchres)
     let text = []
@@ -1521,7 +1782,7 @@ function! s:show_summize(searchres)
 
 	let matchcount += 1
     endwhile
-    call s:twitter_wintext(text)
+    call s:twitter_wintext(text, "timeline")
 endfunction
 
 " Query Twitter Search API and retrieve results
