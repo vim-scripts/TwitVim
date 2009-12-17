@@ -54,6 +54,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :DMTwitter...........................: |:DMTwitter|
 	     :DMSentTwitter.......................: |:DMSentTwitter|
 	     :ListTwitter.........................: |:ListTwitter|
+	     :RetweetedToMeTwitter................: |:RetweetedToMeTwitter|
+	     :RetweetedByMeTwitter................: |:RetweetedByMeTwitter|
 	     :BackTwitter.........................: |:BackTwitter|
 	     :ForwardTwitter......................: |:ForwardTwitter|
 	     :RefreshTwitter......................: |:RefreshTwitter|
@@ -69,7 +71,6 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     <Leader>Ctrl-R.......................: |TwitVim-Leader-C-r|
 	     Retweet Feature......................: |TwitVim-retweet|
 	     <Leader>R............................: |TwitVim-Leader-S-r|
-	     twitvim_retweet_format...............: |twitvim_retweet_format|
 	     Direct Message Feature...............: |TwitVim-direct-message|
 	     Alt-D................................: |TwitVim-A-d|
 	     <Leader>d............................: |TwitVim-Leader-d|
@@ -107,6 +108,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :ATinyURL............................: |:ATinyURL|
 	     :PTinyURL............................: |:PTinyURL|
 	     :BitLy...............................: |:BitLy|
+	     twitvim_bitly_user...................: |twitvim_bitly_user|
+	     twitvim_bitly_key....................: |twitvim_bitly_key|
 	     :ABitLy..............................: |:ABitLy|
 	     :PBitLy..............................: |:PBitLy|
 	     :IsGd................................: |:IsGd|
@@ -124,6 +127,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     twitvim_cligs_key....................: |twitvim_cligs_key|
 	     :ACligs..............................: |:ACligs|
 	     :PCligs..............................: |:PCligs|
+	     :Zima................................: |:Zima|
+	     :AZima...............................: |:AZima|
+	     :PZima...............................: |:PZima|
 	     :SearchTwitter.......................: |:SearchTwitter|
 	     :RateLimitTwitter....................: |:RateLimitTwitter|
 	     :ProfileTwitter......................: |:ProfileTwitter|
@@ -492,13 +498,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 
 	:[count]FriendsTwitter				*:FriendsTwitter*
-	:[count]FriendsTwitter {username}
 
 	This command displays your Twitter timeline with updates from friends
 	merged in.
-
-	If you specify a {username}, this command displays the friends
-	timeline for that user. Note: Twitter has disabled this API feature.
 
 	If you specify [count], that number is used as the page number. For
 	example, :2FriendsTwitter displays the second page from your friends
@@ -551,6 +553,28 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 	In the second form, the command displays list {list} from user
 	{user}.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2ListTwitter list1 displays the second page from the list1
+	list timeline.
+
+
+	:[count]RetweetedToMeTwitter			*:RetweetedToMeTwitter*
+
+	This command displays a timeline of retweets by others to you.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2RetweetedToMeTwitter displays the second page from the
+	retweets timeline.
+
+
+	:[count]RetweetedByMeTwitter			*:RetweetedByMeTwitter*
+
+	This command displays a timeline of retweets by you.
+
+	If you specify [count], that number is used as the page number. For
+	example, :2RetweetedByMeTwitter displays the second page from the
+	retweets timeline.
 
 
 	:BackTwitter					*:BackTwitter*
@@ -625,28 +649,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 	This mapping (Note: uppercase 'R' instead of 'r'.) is local to the
 	timeline buffer. It is similar to the retweet feature in popular
-	Twitter clients. In the timeline buffer, it sends the current line to
-	the command line so that you can repost this line as a new tweet.
-
-						    *twitvim_retweet_format*
-	By default, TwitVim retweets tweets in the following format:
-
-		RT @user: text of the tweet
-
-	You can customize the retweet format by adding the following to your
-	vimrc, for example:
-
-		let twitvim_retweet_format = 'Retweet from %s: %t'
-
-	or:
-
-		let twitvim_retweet_format = '%t (retweeted from %s)'
-
-	When you retweet a tweet, TwitVim will replace "%s" in
-	twitvim_retweet_format with the user name of the original poster and
-	"%t" with the text of the tweet.
-
-	The default setting of twitvim_retweet_format is "RT %s: %t"
+	Twitter clients. In the timeline buffer, it retweets the current line.
 
 
 							*TwitVim-direct-message*
@@ -878,12 +881,27 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	:BitLy {url}
 
 	bit.ly is a URL forwarding and shortening service. See
-	http://bit.ly/go
+	http://bit.ly/
 
 	This command calls the bit.ly API to get a short URL in place of
 	<url>. If {url} is not provided on the command line, the command will
 	prompt you to enter a URL. The short URL is then inserted into the
 	current buffer at the current position.
+
+	The bit.ly API requires a bit.ly login and a bit.ly API key. A default
+	login and key pair is provided with TwitVim and no configuration is
+	needed. However, if you wish to supply your own login and key to track
+	your bit.ly history and stats, visit
+	http://bit.ly/account/your_api_key to retrieve your API info and add
+	the following to your vimrc:
+
+							*twitvim_bitly_user*
+							*twitvim_bitly_key*
+		let twitvim_bitly_user = "username"
+		let twitvim_bitly_key = "R_123456789"
+
+	Replace username with your bit.ly login and R_123456789 with your
+	bit.ly API key.
 
 	:ABitLy						*:ABitLy*
 	:ABitLy {url}
@@ -934,7 +952,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	current buffer at the current position.
 
 	The urlBorg API requires an API key. A default API key is provided
-	with TwitVim and no configuration is required. However, if you wish to
+	with TwitVim and no configuration is needed. However, if you wish to
 	supply your own key in order to track your urlBorg history and stats,
 	visit http://urlborg.com/a/account/ to retrieve your API key and then
 	add the following to your vimrc:
@@ -1026,6 +1044,29 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	:PCligs {url}
 	
 	Same as :Cligs but prompts for a tweet on the command line with the
+	short URL already inserted.
+
+
+	:Zima						*:Zima*
+	:Zima {url}
+
+	Zima is a URL forwarding and shortening service. See http://zi.ma/
+
+	This command calls the Zi.ma API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:AZima						*:AZima*
+	:AZima {url}
+
+	Same as :Zima but appends, i.e. inserts after the current position
+	instead of at the current position, the short URL instead.
+
+	:PZima						*:PZima*
+	:PZima {url}
+	
+	Same as :Zima but prompts for a tweet on the command line with the
 	short URL already inserted.
 
 
@@ -1172,6 +1213,17 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 ==============================================================================
 7. TwitVim History					*TwitVim-history*
 
+	0.4.4 : 2009-12-13 * Upgraded bit.ly API support to version 2.0.1
+			     with configurable user login and key.
+			   * Added support for Zima. |:Zima|
+			   * Fixed :BackTwitter behavior when browsing
+			     multiple lists.
+			   * Added support for displaying retweets in
+			     friends timeline.
+			   * Use Twitter Retweet API to retweet.
+			   * Added commands to display retweets to you or
+			     by you. |:RetweetedToMeTwitter|
+			     |:RetweetedByMeTwitter|
 	0.4.3 : 2009-11-27 * Fixed some minor breakage in LongURL support.
 			   * Added |:ListTwitter|
 			   * Omit author's name from the list when doing a

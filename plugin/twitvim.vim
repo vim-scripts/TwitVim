@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.4.3
+" Version: 0.4.4
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: November 27, 2009
+" Last updated: December 13, 2009
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -802,6 +802,9 @@ let s:bufstackptr = -1
 " Add current buffer to the buffer stack at the next position after current.
 " Remove all buffers after that.
 function! s:add_buffer()
+
+    " If stack is already full, remove the buffer at the bottom of the stack to
+    " make room.
     if s:bufstackptr >= s:bufstackmax
 	call remove(s:bufstack, 0)
 	let s:bufstackptr -= 1
@@ -833,12 +836,15 @@ function! s:save_buffer()
 	execute curwin .  "wincmd w"
     endif
 
-    if s:bufstackptr >= 0 && s:curbuffer.buftype == s:bufstack[s:bufstackptr].buftype && s:curbuffer.user == s:bufstack[s:bufstackptr].user && s:curbuffer.page == s:bufstack[s:bufstackptr].page
+    " If current buffer is the same type as buffer at the top of the stack,
+    " then just copy it.
+    if s:bufstackptr >= 0 && s:curbuffer.buftype == s:bufstack[s:bufstackptr].buftype && s:curbuffer.list == s:bufstack[s:bufstackptr].list && s:curbuffer.user == s:bufstack[s:bufstackptr].user && s:curbuffer.page == s:bufstack[s:bufstackptr].page
 
 	let s:bufstack[s:bufstackptr] = deepcopy(s:curbuffer)
 	return
     endif
 
+    " Otherwise, push the current buffer onto the stack.
     call s:add_buffer()
 endfunction
 
@@ -901,7 +907,7 @@ endif
 
 " Add update to Twitter buffer if public, friends, or user timeline.
 function! s:add_update(output)
-    if has_key(s:curbuffer, 'buftype') && (s:curbuffer.buftype == "public" || s:curbuffer.buftype == "friends" || s:curbuffer.buftype == "user" || s:curbuffer.buftype == "replies" || s:curbuffer.buftype == "list")
+    if has_key(s:curbuffer, 'buftype') && (s:curbuffer.buftype == "public" || s:curbuffer.buftype == "friends" || s:curbuffer.buftype == "user" || s:curbuffer.buftype == "replies" || s:curbuffer.buftype == "list" || s:curbuffer.buftype == "retweeted_by_me" || s:curbuffer.buftype == "retweeted_to_me")
 
 	" Parse the output from the Twitter update call.
 	let line = s:format_status_xml(a:output)
@@ -1101,6 +1107,41 @@ function! s:Retweet()
 	let retweet = substitute(s:get_retweet_fmt(), '%s', '@'.username, '')
 	let retweet = substitute(retweet, '%t', s:get_tweet(line), '')
 	call s:CmdLine_Twitter(retweet, 0)
+    endif
+endfunction
+
+" Use new-style retweet API to retweet a tweet from another user.
+function! s:Retweet_2()
+    let login = s:get_twitvim_login()
+    if login == ''
+	return -1
+    endif
+
+    let status = get(s:curbuffer.statuses, line('.'))
+    if status == 0
+	" Fall back to old-style retweeting if we can't get this tweet's status
+	" ID.
+	call s:Retweet()
+	return
+    endif
+
+    let parms = {}
+
+    " Force POST instead of GET.
+    let parms["dummy"] = "dummy1"
+
+    let url = s:get_api_root()."/statuses/retweet/".status.".xml"
+
+    redraw
+    echo "Retweeting..."
+
+    let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), parms)
+    if error != ''
+	call s:errormsg("Error retweeting: ".error)
+    else
+	call s:add_update(output)
+	redraw
+	echo "Retweeted."
     endif
 endfunction
 
@@ -1501,7 +1542,7 @@ function! s:twitter_win(wintype)
 	    nnoremap <buffer> <silent> <Leader>d :call <SID>Quick_DM()<cr>
 
 	    " Retweet feature for replicating another user's tweet.
-	    nnoremap <buffer> <silent> <Leader>R :call <SID>Retweet()<cr>
+	    nnoremap <buffer> <silent> <Leader>R :call <SID>Retweet_2()<cr>
 
 	    " Reply to all feature.
 	    nnoremap <buffer> <silent> <Leader><C-r> :call <SID>Reply_All()<cr>
@@ -1573,6 +1614,10 @@ endfunction
 function! s:format_status_xml(item)
     let item = a:item
 
+    " Quick hack. Even though we're getting new-style retweets in the timeline
+    " XML, we'll still use the old-style retweet text from it.
+    let item = s:xml_remove_elements(item, 'retweeted_status')
+
     let user = s:xml_get_element(item, 'screen_name')
     let text = s:convert_entity(s:xml_get_element(item, 'text'))
     let pubdate = s:time_filter(s:xml_get_element(item, 'created_at'))
@@ -1596,6 +1641,13 @@ function! s:show_timeline_xml(timeline, tline_name, username, page)
     let title = substitute(a:tline_name, '^.', '\u&', '')." timeline"
     if a:username != ''
 	let title .= " for ".a:username
+    endif
+
+    " Special case titles for Retweets.
+    if a:tline_name == "retweeted_to_me"
+	let title = "Retweets by others"
+    elseif a:tline_name == "retweeted_by_me"
+	let title = "Retweets by you"
     endif
 
     if a:page > 1
@@ -1639,11 +1691,11 @@ function! s:get_timeline(tline_name, username, page)
 	endif
     endif
 
-    " Twitter API allows you to specify a username for user timeline and
-    " friends timeline to retrieve another user's timeline.
+    " Twitter API allows you to specify a username for user_timeline to
+    " retrieve another user's timeline.
     let user = a:username == '' ? '' : '/'.a:username
 
-    let url_fname = a:tline_name == "replies" ? "replies.xml" : a:tline_name."_timeline".user.".xml"
+    let url_fname = (a:tline_name == "replies" || a:tline_name == "retweeted_to_me" || a:tline_name == "retweeted_by_me") ? a:tline_name.".xml" : a:tline_name == "friends" ? "home_timeline.xml" : a:tline_name."_timeline".user.".xml"
 
     " Support pagination.
     if a:page > 1
@@ -1651,8 +1703,8 @@ function! s:get_timeline(tline_name, username, page)
 	let gotparam = 1
     endif
 
-    " Support count parameter in friends and user timelines.
-    if a:tline_name == 'friends' || a:tline_name == 'user'
+    " Support count parameter in friends, user, and retweet timelines.
+    if a:tline_name == 'friends' || a:tline_name == 'user' || a:tline_name == 'retweeted_to_me' || a:tline_name == 'retweeted_by_me'
 	let tcount = s:get_count()
 	if tcount > 0
 	    let url_fname .= (gotparam ? '&' : '?').'count='.tcount
@@ -1843,7 +1895,7 @@ endfunction
 " Function to load a timeline from the given parameters. For use by refresh and
 " next/prev pagination commands.
 function! s:load_timeline(buftype, user, list, page)
-    if a:buftype == "public" || a:buftype == "friends" || a:buftype == "user" || a:buftype == "replies"
+    if a:buftype == "public" || a:buftype == "friends" || a:buftype == "user" || a:buftype == "replies" || a:buftype == "retweeted_by_me" || a:buftype == "retweeted_to_me"
 	call s:get_timeline(a:buftype, a:user, a:page)
     elseif a:buftype == "list"
 	call s:get_list_timeline(a:user, a:list, a:page)
@@ -1901,7 +1953,7 @@ if !exists(":PublicTwitter")
     command PublicTwitter :call <SID>get_timeline("public", '', 1)
 endif
 if !exists(":FriendsTwitter")
-    command -range=1 -nargs=? FriendsTwitter :call <SID>get_timeline("friends", <q-args>, <count>)
+    command -count=1 FriendsTwitter :call <SID>get_timeline("friends", '', <count>)
 endif
 if !exists(":UserTwitter")
     command -range=1 -nargs=? UserTwitter :call <SID>get_timeline("user", <q-args>, <count>)
@@ -1917,6 +1969,12 @@ if !exists(":DMSentTwitter")
 endif
 if !exists(":ListTwitter")
     command -range=1 -nargs=+ ListTwitter :call <SID>DoList(<count>, <f-args>)
+endif
+if !exists(":RetweetedByMeTwitter")
+    command -count=1 RetweetedByMeTwitter :call <SID>get_timeline("retweeted_by_me", '', <count>)
+endif
+if !exists(":RetweetedToMeTwitter")
+    command -count=1 RetweetedToMeTwitter :call <SID>get_timeline("retweeted_to_me", '', <count>)
 endif
 
 nnoremenu Plugin.TwitVim.-Sep1- :
@@ -2211,22 +2269,51 @@ function! s:call_tinyurl(url)
     endif
 endfunction
 
+" Get bit.ly username and api key if configured by the user. Otherwise, use a
+" default username and api key.
+function! s:get_bitly_key()
+    if exists('g:twitvim_bitly_user') && exists('g:twitvim_bitly_key')
+	return [ g:twitvim_bitly_user, g:twitvim_bitly_key ]
+    endif
+    return [ 'twitvim', 'R_a53414d2f36a90c3e189299c967e6efc' ]
+endfunction
+
 " Call bit.ly API to shorten a URL.
 function! s:call_bitly(url)
+    let [ user, key ] = s:get_bitly_key()
+
     redraw
     echo "Sending request to bit.ly..."
 
-    let url = 'http://bit.ly/api?url='.s:url_encode(a:url)
+    let url = 'http://api.bit.ly/shorten?version=2.0.1'
+    let url .= '&longUrl='.s:url_encode(a:url)
+    let url .= '&login='.user
+    let url .= '&apiKey='.key.'&format=xml&history=1'
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
 
     if error != ''
 	call s:errormsg("Error calling bit.ly API: ".error)
 	return ""
-    else
-	redraw
-	echo "Received response from bit.ly."
-	return output
     endif
+
+    let status = s:xml_get_element(output, 'statusCode')
+    if status != 'OK'
+	let errorcode = s:xml_get_element(output, 'errorCode')
+	let errormsg = s:xml_get_element(output, 'errorMessage')
+	if errorcode == 0
+	    " For reasons unknown, bit.ly sometimes return two error codes and
+	    " the first one is 0.
+	    let errorcode = s:xml_get_nth(output, 'errorCode', 2)
+	    let errormsg = s:xml_get_nth(output, 'errorMessage', 2)
+	endif
+	call s:errormsg("Error from bit.ly: ".errorcode." ".errormsg)
+	return ""
+    endif
+
+    let shorturl = s:xml_get_element(output, 'shortUrl')
+    redraw
+    echo "Received response from bit.ly."
+    return shorturl
 endfunction
 
 " Call is.gd API to shorten a URL.
@@ -2289,6 +2376,9 @@ endfunction
 function! s:call_trim(url)
     let login = s:get_trim_login()
 
+    redraw
+    echo "Sending request to tr.im..."
+
     let url = 'http://tr.im/api/trim_url.xml?url='.s:url_encode(a:url)
 
     let [error, output] = s:run_curl(url, login, s:get_proxy(), s:get_proxy_login(), {})
@@ -2327,6 +2417,9 @@ function! s:call_cligs(url)
 	let url .= '&key='.key
     endif
 
+    redraw
+    echo "Sending request to Cligs..."
+
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	call s:errormsg("Error calling Cligs API: ".error)
@@ -2335,6 +2428,30 @@ function! s:call_cligs(url)
 
     redraw
     echo "Received response from Cligs."
+    return output
+endfunction
+
+" Call Zi.ma API to shorten a URL.
+function! s:call_zima(url)
+    let url = "http://zi.ma/?module=ShortURL&file=Add&mode=API&url=".s:url_encode(a:url)
+
+    redraw
+    echo "Sending request to Zi.ma..."
+
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	call s:errormsg("Error calling Zi.ma API: ".error)
+	return ""
+    endif
+
+    let error = s:xml_get_element(output, 'h3')
+    if error != ''
+	call s:errormsg("Error from Zi.ma: ".error)
+	return ""
+    endif
+
+    redraw
+    echo "Received response from Zi.ma."
     return output
 endfunction
 
@@ -2456,6 +2573,16 @@ if !exists(":ACligs")
 endif
 if !exists(":PCligs")
     command -nargs=? PCligs :call <SID>GetShortURL("cmdline", <q-args>, "call_cligs")
+endif
+
+if !exists(":Zima")
+    command -nargs=? Zima :call <SID>GetShortURL("insert", <q-args>, "call_zima")
+endif
+if !exists(":AZima")
+    command -nargs=? AZima :call <SID>GetShortURL("append", <q-args>, "call_zima")
+endif
+if !exists(":PZima")
+    command -nargs=? PZima :call <SID>GetShortURL("cmdline", <q-args>, "call_zima")
 endif
 
 " Parse and format search results from Twitter Search API.
