@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.5.0
+" Version: 0.5.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: June 16, 2010
+" Last updated: June 19, 2010
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -586,6 +586,18 @@ function! s:do_oauth()
     " If user has not set up twitvim_browser_cmd, just display the
     " authentication URL and ask the user to visit that URL.
     if !exists('g:twitvim_browser_cmd') || g:twitvim_browser_cmd == ''
+
+	" Attempt to shorten the auth URL.
+	let newurl = s:call_isgd(auth_url)
+	if newurl != ""
+	    let auth_url = newurl
+	else
+	    let newurl = s:call_bitly(auth_url)
+	    if newurl != ""
+		let auth_url = newurl
+	    endif
+	endif
+
 	echo "Visit the following URL in your browser to authenticate TwitVim:"
 	echo auth_url
     else
@@ -2081,10 +2093,10 @@ function! s:get_timeline(tline_name, username, page)
 	let login = s:ologin
     endif
 
-    " user_timeline requires GET request method even if there are count and
-    " page parameters. All other timeline calls seem to require POST method if
-    " there are parameters.
-    let force_get = a:tline_name == "user"
+    " user_timeline and public_timeline require GET request method even if
+    " there are count and page parameters. All other timeline calls seem to
+    " require POST method if there are parameters.
+    let force_get = a:tline_name == "user" || a:tline_name == "public"
 
     let url_fname = (a:tline_name == "retweeted_to_me" || a:tline_name == "retweeted_by_me") ? a:tline_name.".xml" : a:tline_name == "friends" ? "home_timeline.xml" : a:tline_name == "replies" ? "mentions.xml" : a:tline_name."_timeline.xml"
 
@@ -2097,6 +2109,13 @@ function! s:get_timeline(tline_name, username, page)
 	else
 	    let parms["page"] = a:page
 	endif
+    endif
+
+    " Include retweets.
+    if force_get
+	let url_fname = s:add_to_url(url_fname, 'include_rts=true')
+    else
+	let parms["include_rts"] = "true"
     endif
 
     " Twitter API allows you to specify a username for user_timeline to
