@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.5.6
+" Version: 0.6.0
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: September 19, 2010
+" Last updated: October 27, 2010
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -1337,120 +1337,193 @@ endif
 
 let s:curbuffer = {}
 
-let s:bufstack = []
+" The info buffer record holds the following fields:
+"
+" buftype: profile, friends, followers, listmembers, listsubs, userlists, userlistmem, userlistsubs
+" next_cursor: Used for paging.
+" prev_cursor: Used for paging.
+" cursor: Used for refresh.
+" user: User name
+" list: List name
+
+let s:infobuffer = {}
+
+" ptr = Buffer stack pointer. -1 if no items yet. May not point to the end of
+" the list if user has gone back one or more buffers.
+let s:bufstack = { 'ptr': -1, 'stack': [] }
+
+let s:infobufstack = { 'ptr': -1, 'stack': [] }
 
 " Maximum items in the buffer stack. Adding a new item after this limit will
 " get rid of the first item.
 let s:bufstackmax = 10
 
-" Buffer stack pointer. -1 if no items yet. May not point to the end of the
-" list if user has gone back one or more buffers.
-let s:bufstackptr = -1
 
 " Add current buffer to the buffer stack at the next position after current.
 " Remove all buffers after that.
-function! s:add_buffer()
+function! s:add_buffer(infobuf)
+
+    let stack = a:infobuf ? s:infobufstack : s:bufstack
+    let cur = a:infobuf ? s:infobuffer : s:curbuffer
 
     " If stack is already full, remove the buffer at the bottom of the stack to
     " make room.
-    if s:bufstackptr >= s:bufstackmax
-	call remove(s:bufstack, 0)
-	let s:bufstackptr -= 1
+    if stack.ptr >= s:bufstackmax
+	call remove(stack.stack, 0)
+	let stack.ptr -= 1
     endif
 
-    let s:bufstackptr += 1
+    let stack.ptr += 1
 
     " Suppress errors because there may not be anything to remove after current
     " position.
-    silent! call remove(s:bufstack, s:bufstackptr, -1)
+    silent! call remove(stack.stack, stack.ptr, -1)
 
-    call add(s:bufstack, s:curbuffer)
+    call add(stack.stack, cur)
 endfunction
 
 " If current buffer is same type as the buffer at the buffer stack pointer then
 " just copy it into the buffer stack. Otherwise, add it to buffer stack.
-function! s:save_buffer()
-    if s:curbuffer == {}
+function! s:save_buffer(infobuf)
+    let stack = a:infobuf ? s:infobufstack : s:bufstack
+    let cur = a:infobuf ? s:infobuffer : s:curbuffer
+    let winname = a:infobuf ? s:user_winname : s:twit_winname
+
+    if cur == {}
 	return
     endif
 
     " Save buffer contents and cursor position.
-    let twit_bufnr = bufwinnr('^'.s:twit_winname.'$')
+    let twit_bufnr = bufwinnr('^'.winname.'$')
     if twit_bufnr > 0
 	let curwin = winnr()
 	execute twit_bufnr . "wincmd w"
-	let s:curbuffer.buffer = getline(1, '$')
-	let s:curbuffer.view = winsaveview()
+	let cur.buffer = getline(1, '$')
+	let cur.view = winsaveview()
 	execute curwin .  "wincmd w"
     else
-	let s:curbuffer.view = {}
+	let cur.view = {}
     endif
 
     " If current buffer is the same type as buffer at the top of the stack,
     " then just copy it.
-    if s:bufstackptr >= 0 && s:curbuffer.buftype == s:bufstack[s:bufstackptr].buftype && s:curbuffer.list == s:bufstack[s:bufstackptr].list && s:curbuffer.user == s:bufstack[s:bufstackptr].user && s:curbuffer.page == s:bufstack[s:bufstackptr].page
+    if stack.ptr >= 0
 
-	let s:bufstack[s:bufstackptr] = deepcopy(s:curbuffer)
-	return
+	let issame = 0
+	
+	if a:infobuf
+	    if cur.buftype == stack.stack[stack.ptr].buftype && cur.cursor == stack.stack[stack.ptr].cursor && cur.user == stack.stack[stack.ptr].user && cur.list == stack.stack[stack.ptr].list
+		let issame = 1
+	    endif
+	else
+	    if cur.buftype == stack.stack[stack.ptr].buftype && cur.list == stack.stack[stack.ptr].list && cur.user == stack.stack[stack.ptr].user && cur.page == stack.stack[stack.ptr].page
+		let issame = 1
+	    endif
+	endif
+
+	if issame
+	    let stack.stack[stack.ptr] = deepcopy(cur)
+	    return
+	endif
     endif
 
     " Otherwise, push the current buffer onto the stack.
-    call s:add_buffer()
+    call s:add_buffer(a:infobuf)
 endfunction
 
 " Go back one buffer in the buffer stack.
-function! s:back_buffer()
-    call s:save_buffer()
+function! s:back_buffer(infobuf)
+    let stack = a:infobuf ? s:infobufstack : s:bufstack
 
-    if s:bufstackptr < 1
+    call s:save_buffer(a:infobuf)
+
+    if stack.ptr < 1
 	call s:warnmsg("Already at oldest buffer. Can't go back further.")
 	return -1
     endif
 
-    let s:bufstackptr -= 1
-    let s:curbuffer = deepcopy(s:bufstack[s:bufstackptr])
+    let stack.ptr -= 1
+    if a:infobuf
+	let s:infobuffer = deepcopy(stack.stack[stack.ptr])
+    else
+	let s:curbuffer = deepcopy(stack.stack[stack.ptr])
+    endif
+    let cur = a:infobuf ? s:infobuffer : s:curbuffer
+    let wintype = a:infobuf ? 'userinfo' : 'timeline'
 
-    call s:twitter_wintext_view(s:curbuffer.buffer, "timeline", s:curbuffer.view)
+    call s:twitter_wintext_view(cur.buffer, wintype, cur.view)
     return 0
 endfunction
 
 " Go forward one buffer in the buffer stack.
-function! s:fwd_buffer()
-    call s:save_buffer()
+function! s:fwd_buffer(infobuf)
+    let stack = a:infobuf ? s:infobufstack : s:bufstack
 
-    if s:bufstackptr + 1 >= len(s:bufstack)
+    call s:save_buffer(a:infobuf)
+
+    if stack.ptr + 1 >= len(stack.stack)
 	call s:warnmsg("Already at newest buffer. Can't go forward.")
 	return -1
     endif
 
-    let s:bufstackptr += 1
-    let s:curbuffer = deepcopy(s:bufstack[s:bufstackptr])
+    let stack.ptr += 1
+    if a:infobuf
+	let s:infobuffer = deepcopy(stack.stack[stack.ptr])
+    else
+	let s:curbuffer = deepcopy(stack.stack[stack.ptr])
+    endif
+    let cur = a:infobuf ? s:infobuffer : s:curbuffer
+    let wintype = a:infobuf ? 'userinfo' : 'timeline'
 
-    call s:twitter_wintext_view(s:curbuffer.buffer, "timeline", s:curbuffer.view)
+    call s:twitter_wintext_view(cur.buffer, wintype, cur.view)
     return 0
 endfunction
 
 if !exists(":BackTwitter")
-    command BackTwitter :call <SID>back_buffer()
+    command BackTwitter :call <SID>back_buffer(0)
 endif
 if !exists(":ForwardTwitter")
-    command ForwardTwitter :call <SID>fwd_buffer()
+    command ForwardTwitter :call <SID>fwd_buffer(0)
+endif
+if !exists(":BackInfoTwitter")
+    command BackInfoTwitter :call <SID>back_buffer(1)
+endif
+if !exists(":ForwardInfoTwitter")
+    command ForwardInfoTwitter :call <SID>fwd_buffer(1)
 endif
 
 " For debugging. Show the buffer stack.
-function! s:show_bufstack()
-    for i in range(len(s:bufstack) - 1, 0, -1)
-	echo i.':' 'type='.s:bufstack[i].buftype 'user='.s:bufstack[i].user 'page='.s:bufstack[i].page
+function! s:show_bufstack(infobuf)
+    let stack = a:infobuf ? s:infobufstack : s:bufstack
+
+    for i in range(len(stack.stack) - 1, 0, -1)
+	let s = i.':'
+	let s .= ' type='.stack.stack[i].buftype
+	let s .= ' user='.stack.stack[i].user
+	let s .= ' list='.stack.stack[i].list
+	if a:infobuf
+	    let s .= ' cursor='.stack.stack[i].cursor
+	else
+	    let s .= ' page='.stack.stack[i].page
+	endif
+	echo s
     endfor
 endfunction
 
 if !exists(":TwitVimShowBufstack")
-    command TwitVimShowBufstack :call <SID>show_bufstack()
+    command TwitVimShowBufstack :call <SID>show_bufstack(0)
+endif
+if !exists(":TwitVimShowInfoBufstack")
+    command TwitVimShowInfoBufstack :call <SID>show_bufstack(1)
 endif
 
 " For debugging. Show curbuffer variable.
 if !exists(":TwitVimShowCurbuffer")
     command TwitVimShowCurbuffer :echo s:curbuffer
+endif
+" For debugging. Show infobuffer variable.
+if !exists(":TwitVimShowInfobuffer")
+    command TwitVimShowInfobuffer :echo s:infobuffer
 endif
 
 " === End of buffer stack code ===
@@ -1902,37 +1975,87 @@ function! s:launch_browser(url)
     return 0
 endfunction
 
+let s:URLMATCH = '\%(http\|https\|ftp\)://\S\+'
+
 " Launch web browser with the URL at the cursor position. If possible, this
 " function will try to recognize a URL within the current word. Otherwise,
 " it'll just use the whole word.
 " If the cWORD happens to be @user or user:, show that user's timeline.
-function! s:launch_url_cword()
+function! s:launch_url_cword(infobuf)
     let s = expand("<cWORD>")
 
     " Handle @-replies by showing that user's timeline.
-    let matchres = matchlist(s, '^@\(\w\+\)')
+    " An @-reply must be preceded by a non-word character and ends at a
+    " non-word character.
+    let matchres = matchlist(s, '\w\@<!@\(\w\+\)')
     if matchres != []
 	call s:get_timeline("user", matchres[1], 1)
 	return
     endif
 
-    " Handle username: at the beginning of the line by showing that user's
-    " timeline.
-    let matchres = matchlist(s, '^\(\w\+\):$')
-    if matchres != []
-	call s:get_timeline("user", matchres[1], 1)
-	return
+    if a:infobuf
+	" Don't match ^word: if in profile buffer. It leads to all kinds of
+	" false matches. Instead, parse a Name: line specially.
+	let name = s:info_getname()
+	if name != ''
+	    call s:get_timeline("user", name, 1)
+	    return
+	endif
+
+	" Parse a Website: line specially.
+	let matchres = matchlist(getline('.'), '^Website: \('.s:URLMATCH.'\)')
+	if matchres != []
+	    call s:launch_browser(matchres[1])
+	    return
+	endif
+
+	" Don't do anything on field labels in profile buffer.
+	" Otherwise, the code below will needlessly launch a web browser.
+	let matchres = matchlist(s, '^\(\w\+\):$')
+	if matchres != []
+	    return
+	endif
+    else
+	if col('.') == 1 && s == '+'
+	    " If the cursor is on the '+' in a reply expansion, use the second
+	    " word instead.
+	    let matchres = matchlist(getline('.'), '^+ \(\w\+\):')
+	    if matchres != []
+		call s:get_timeline("user", matchres[1], 1)
+		return
+	    endif
+	endif
+
+	" Handle username: at the beginning of the line by showing that user's
+	" timeline.
+	let matchres = matchlist(s, '^\(\w\+\):$')
+	if matchres != []
+	    call s:get_timeline("user", matchres[1], 1)
+	    return
+	endif
     endif
 
     " Handle #-hashtags by showing the Twitter Search for that hashtag.
-    let matchres = matchlist(s, '^\(#\w\+\)')
+    " A #-hashtag must be preceded by a non-word character and ends at a
+    " non-word character.
+    let matchres = matchlist(s, '\w\@<!\(#\w\+\)')
     if matchres != []
 	call s:get_summize(matchres[1], 1)
 	return
     endif
 
-    let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
+    let s = substitute(s, '.*\<\('.s:URLMATCH.'\)', '\1', "")
     call s:launch_browser(s)
+endfunction
+
+" Extract name from current line in info buffer, if possible.
+function! s:info_getname()
+    let matchres = matchlist(getline('.'), '^Name: \(\w\+\)')
+    if matchres != []
+	return matchres[1]
+    else
+	return ''
+    endif
 endfunction
 
 " Call LongURL API on a shorturl to expand it.
@@ -1972,13 +2095,26 @@ function! s:do_longurl(s)
     let s = a:s
     if s == ""
 	let s = expand("<cWORD>")
-	let s = substitute(s, '.*\<\(\(http\|https\|ftp\)://\S\+\)', '\1', "")
+	let s = substitute(s, '.*\<\('.s:URLMATCH.'\)', '\1', "")
     endif
     let result = s:call_longurl(s)
     if result != ""
 	redraw
 	echo s.' expands to '.result
     endif
+endfunction
+
+
+" Just like do_user_info() but handle Name: lines in info buffer specially.
+function! s:do_user_info_infobuf()
+    let name = s:info_getname()
+    if name != ''
+	call s:get_user_info(name)
+	return
+    endif
+
+    " Fall back to original user info function.
+    call s:do_user_info('')
 endfunction
 
 " Get info on the given user. If no user is provided, use the current word and
@@ -2064,24 +2200,20 @@ function! s:twitter_win_syntax(wintype)
 	syntax match twitterTimeBar /|/ contained
 
 	" Highlight links in tweets.
-	syntax match twitterLink "\<http://\S\+"
-	syntax match twitterLink "\<https://\S\+"
-	syntax match twitterLink "\<ftp://\S\+"
+	execute 'syntax match twitterLink "\<'.s:URLMATCH.'"'
 
-	" An @-reply must be preceded by whitespace and ends at a non-word
-	" character.
-	syntax match twitterReply "\S\@<!@\w\+"
+	" An @-reply must be preceded by a non-word character and ends at a
+	" non-word character.
+	syntax match twitterReply "\w\@<!@\w\+"
 
-	" A #-hashtag must be preceded by whitespace and ends at a non-word
-	" character.
-	syntax match twitterLink "\S\@<!#\w\+"
+	" A #-hashtag must be preceded by a non-word character and ends at a
+	" non-word character.
+	syntax match twitterLink "\w\@<!#\w\+"
 
-	if a:wintype != "userinfo"
-	    " Use the extra star at the end to recognize the title but hide the
-	    " star.
-	    syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
-	    syntax match twitterTitleStar /\*$/ contained
-	endif
+	" Use the extra star at the end to recognize the title but hide the
+	" star.
+	syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	syntax match twitterTitleStar /\*$/ contained
 
 	highlight default link twitterUser Identifier
 	highlight default link twitterTime String
@@ -2114,8 +2246,8 @@ function! s:twitter_win(wintype)
 	setlocal nospell
 
 	" Launch browser with URL in visual selection or at cursor position.
-	nnoremap <buffer> <silent> <A-g> :call <SID>launch_url_cword()<cr>
-	nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword()<cr>
+	nnoremap <buffer> <silent> <A-g> :call <SID>launch_url_cword(0)<cr>
+	nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword(0)<cr>
 	vnoremap <buffer> <silent> <A-g> y:call <SID>launch_browser(@")<cr>
 	vnoremap <buffer> <silent> <Leader>g y:call <SID>launch_browser(@")<cr>
 
@@ -2127,8 +2259,27 @@ function! s:twitter_win(wintype)
 	nnoremap <buffer> <silent> <Leader>e :call <SID>do_longurl("")<cr>
 	vnoremap <buffer> <silent> <Leader>e y:call <SID>do_longurl(@")<cr>
 
-	if a:wintype != "userinfo"
+	if a:wintype == "userinfo"
+	    " Next page in info buffer.
+	    nnoremap <buffer> <silent> <C-PageDown> :call <SID>NextPageInfo()<cr>
 
+	    " Previous page in info buffer.
+	    nnoremap <buffer> <silent> <C-PageUp> :call <SID>PrevPageInfo()<cr>
+	    
+	    " Refresh info buffer.
+	    nnoremap <buffer> <silent> <Leader><Leader> :call <SID>RefreshInfo()<cr>
+
+	    " We need this to be handled specially in the info buffer.
+	    nnoremap <buffer> <silent> <A-g> :call <SID>launch_url_cword(1)<cr>
+	    nnoremap <buffer> <silent> <Leader>g :call <SID>launch_url_cword(1)<cr>
+	    
+	    " This also needs to be handled specially for Name: lines.
+	    nnoremap <buffer> <silent> <Leader>p :call <SID>do_user_info_infobuf()<cr>
+
+	    " Go back and forth through buffer stack.
+	    nnoremap <buffer> <silent> <C-o> :call <SID>back_buffer(1)<cr>
+	    nnoremap <buffer> <silent> <C-i> :call <SID>fwd_buffer(1)<cr>
+	else
 	    " Quick reply feature for replying from the timeline.
 	    nnoremap <buffer> <silent> <A-r> :call <SID>Quick_Reply()<cr>
 	    nnoremap <buffer> <silent> <Leader>r :call <SID>Quick_Reply()<cr>
@@ -2163,13 +2314,13 @@ function! s:twitter_win(wintype)
 	    " Unfavorite a tweet.
 	    nnoremap <buffer> <silent> <Leader><C-f> :call <SID>fave_tweet(1)<cr>
 
+	    " Go back and forth through buffer stack.
+	    nnoremap <buffer> <silent> <C-o> :call <SID>back_buffer(0)<cr>
+	    nnoremap <buffer> <silent> <C-i> :call <SID>fwd_buffer(0)<cr>
 	endif
-
-	" Go back and forth through buffer stack.
-	nnoremap <buffer> <silent> <C-o> :call <SID>back_buffer()<cr>
-	nnoremap <buffer> <silent> <C-i> :call <SID>fwd_buffer()<cr>
     endif
 
+    setlocal filetype=twitvim
     call s:twitter_win_syntax(a:wintype)
     return newwin
 endfunction
@@ -2211,6 +2362,17 @@ function! s:twitter_wintext(text, wintype)
     call s:twitter_wintext_view(a:text, a:wintype, {})
 endfunction
 
+" Format a retweeted status, if available.
+function! s:format_retweeted_status(item)
+    let rt = s:xml_get_element(a:item, 'retweeted_status')
+    if rt == ''
+	return ''
+    endif
+    let user = s:xml_get_element(rt, 'screen_name')
+    let text = s:convert_entity(s:xml_get_element(rt, 'text'))
+    return 'RT @'.user.': '.text
+endfunction
+
 " Format XML status as a display line.
 function! s:format_status_xml(item)
     let item = a:item
@@ -2220,10 +2382,20 @@ function! s:format_status_xml(item)
     let item = s:xml_remove_elements(item, 'retweeted_status')
 
     let user = s:xml_get_element(item, 'screen_name')
-    let text = s:convert_entity(s:xml_get_element(item, 'text'))
+    let text = s:format_retweeted_status(a:item)
+    if text == ''
+	let text = s:convert_entity(s:xml_get_element(item, 'text'))
+    endif
     let pubdate = s:time_filter(s:xml_get_element(item, 'created_at'))
 
     return user.': '.text.' |'.pubdate.'|'
+endfunction
+
+" Get in-reply-to from a status element. If this is a retweet, use the id of
+" the retweeted status as the in-reply-to.
+function! s:get_in_reply_to(status)
+    let rt = s:xml_get_element(a:status, 'retweeted_status')
+    return rt != '' ? s:xml_get_element(rt, 'id') : s:xml_get_element(a:status, 'in_reply_to_status_id')
 endfunction
 
 " Show a timeline from XML stream data.
@@ -2279,7 +2451,7 @@ function! s:show_timeline_xml(timeline, tline_name, username, page)
 	endif
 
 	call add(s:curbuffer.statuses, s:xml_get_element(item, 'id'))
-	call add(s:curbuffer.inreplyto, s:xml_get_element(item, 'in_reply_to_status_id'))
+	call add(s:curbuffer.inreplyto, s:get_in_reply_to(item))
 
 	let line = s:format_status_xml(item)
 	call add(text, line)
@@ -2343,7 +2515,7 @@ function! s:get_timeline(tline_name, username, page)
 	return
     endif
 
-    call s:save_buffer()
+    call s:save_buffer(0)
     let s:curbuffer = {}
     call s:show_timeline_xml(output, a:tline_name, a:username, a:page)
     let s:curbuffer.buftype = a:tline_name
@@ -2396,7 +2568,7 @@ function! s:get_list_timeline(username, listname, page)
 	return
     endif
 
-    call s:save_buffer()
+    call s:save_buffer(0)
     let s:curbuffer = {}
     call s:show_timeline_xml(output, "list", user."/".a:listname, a:page)
     let s:curbuffer.buftype = "list"
@@ -2492,7 +2664,7 @@ function! s:Direct_Messages(mode, page)
 	return
     endif
 
-    call s:save_buffer()
+    call s:save_buffer(0)
     let s:curbuffer = {}
     call s:show_dm_xml(s_or_r, output, a:page)
     let s:curbuffer.buftype = a:mode
@@ -2914,7 +3086,19 @@ if !exists(":RemoveFromListTwitter")
 endif
 
 
-let s:user_winname = "TwitterUserInfo_".localtime()
+let s:user_winname = "TwitterInfo_".localtime()
+
+" Convert true/false into yes/no.
+function! s:yesorno(s)
+    let s = tolower(a:s)
+    if s == "true" || s == "yes"
+	return "yes"
+    elseif s == "false" || s == "no" || s == ""
+	return "no"
+    else
+	return s
+    endif
+endfunction
 
 " Process/format the user information.
 function! s:format_user_info(output)
@@ -2931,19 +3115,20 @@ function! s:format_user_info(output)
     call add(text, '')
     call add(text, 'Following: '.s:xml_get_element(output, 'friends_count'))
     call add(text, 'Followers: '.s:xml_get_element(output, 'followers_count'))
+    call add(text, 'Listed: '.s:xml_get_element(output, 'listed_count'))
     call add(text, 'Updates: '.s:xml_get_element(output, 'statuses_count'))
     call add(text, 'Favorites: '.s:xml_get_element(output, 'favourites_count'))
     call add(text, '')
 
-    call add(text, 'Protected: '.s:xml_get_element(output, 'protected'))
-    call add(text, 'Following: '.s:xml_get_element(output, 'following'))
+    call add(text, 'Protected: '.s:yesorno(s:xml_get_element(output, 'protected')))
+    call add(text, 'Following: '.s:yesorno(s:xml_get_element(output, 'following')))
     call add(text, '')
 
     let usernode = s:xml_remove_elements(output, 'status')
     let startdate = s:time_filter(s:xml_get_element(usernode, 'created_at'))
-    call add(text, 'Started on: |'.startdate.'|')
+    call add(text, 'Started: |'.startdate.'|')
     let timezone = s:convert_entity(s:xml_get_element(usernode, 'time_zone'))
-    call add(text, 'Time zone: '.timezone)
+    call add(text, 'Timezone: '.timezone)
     call add(text, '')
 
     let statusnode = s:xml_get_element(output, 'status')
@@ -2958,15 +3143,19 @@ endfunction
 
 " Call Twitter API to get user's info.
 function! s:get_user_info(username)
-    if a:username == ''
-	call s:errormsg("Please specify a user name to retrieve info on.")
-	return
+    let user = a:username
+    if user == ''
+	let user = s:get_twitvim_username()
+	if user == ''
+	    call s:errormsg('Twitter login not set. Please specify a username.')
+	    return
+	endif
     endif
 
     redraw
     echo "Querying Twitter for user information..."
 
-    let url = s:get_api_root()."/users/show.xml?screen_name=".a:username
+    let url = s:get_api_root()."/users/show.xml?screen_name=".user
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -2974,16 +3163,412 @@ function! s:get_user_info(username)
 	return
     endif
 
+    call s:save_buffer(1)
+    let s:infobuffer = {}
     call s:twitter_wintext(s:format_user_info(output), "userinfo")
+    let s:infobuffer.buftype = 'profile'
+    let s:infobuffer.next_cursor = 0
+    let s:infobuffer.prev_cursor = 0
+    let s:infobuffer.cursor = 0
+    let s:infobuffer.user = user
+    let s:infobuffer.list = ''
 
     redraw
     echo "User information retrieved."
 endfunction
 
 if !exists(":ProfileTwitter")
-    command -nargs=1 ProfileTwitter :call <SID>get_user_info(<q-args>)
+    command -nargs=? ProfileTwitter :call <SID>get_user_info(<q-args>)
 endif
 
+" Format a list of users, e.g. friends/followers list.
+function! s:format_user_list(output, title, show_following)
+    let matchcount = 1
+    let text = []
+
+    let showheader = s:get_show_header()
+    if showheader
+	" The extra stars at the end are for the syntax highlighter to
+	" recognize the title. Then the syntax highlighter hides the stars by
+	" coloring them the same as the background. It is a bad hack.
+	call add(text, a:title.'*')
+	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
+    endif
+
+    while 1
+	let user = s:xml_get_nth(a:output, 'user', matchcount)
+	if user == ""
+	    break
+	endif
+	let matchcount += 1
+
+	let following_str = ''
+	if a:show_following
+	    let following = s:xml_get_element(user, 'following')
+	    if following == 'true'
+		let following_str = ' Following'
+	    else
+		let follow_req = s:xml_get_element(user, 'follow_request_sent')
+		let following_str = follow_req == 'true' ? ' Follow request sent' : ' Not following'
+	    endif
+	endif
+
+	let name = s:convert_entity(s:xml_get_element(user, 'name'))
+	let screen = s:xml_get_element(user, 'screen_name')
+	let location = s:convert_entity(s:xml_get_element(user, 'location'))
+	let slocation = location == '' ? '' : '|'.location
+	call add(text, 'Name: '.screen.' ('.name.slocation.')'.following_str)
+
+	let desc = s:xml_get_element(user, 'description')
+	if desc != ''
+	    call add(text, 'Bio: '.s:convert_entity(desc))
+	endif
+
+	let statusnode = s:xml_get_element(user, 'status')
+	if statusnode != ""
+	    let status = s:xml_get_element(statusnode, 'text')
+	    let pubdate = s:time_filter(s:xml_get_element(statusnode, 'created_at'))
+	    call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
+	endif
+
+	call add(text, '')
+    endwhile
+    return text
+endfunction
+
+" Call Twitter API to get friends or followers list.
+function! s:get_friends(cursor, user, followers)
+    if a:followers
+	let buftype = 'followers'
+	let query = '/statuses/followers.xml'
+	if a:user != ''
+	    let what = 'followers list of '.a:user
+	    let title = 'People following '.a:user
+	else
+	    let what = 'followers list'
+	    let title = 'People following you'
+	endif
+    else
+	let buftype = 'friends'
+	let query = '/statuses/friends.xml'
+	if a:user != ''
+	    let what = 'friends list of '.a:user
+	    let title = 'People '.a:user.' is following'
+	else
+	    let what = 'friends list'
+	    let title = "People you're following"
+	endif
+    endif
+
+    redraw
+    echo "Querying Twitter for ".what."..."
+
+    let url = s:add_to_url(s:get_api_root().query, 'cursor='.a:cursor)
+    if a:user != ''
+	let url = s:add_to_url(url, 'screen_name='.a:user)
+    endif
+
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error getting ".what.": ".(errormsg != '' ? errormsg : error))
+	return
+    endif
+
+    call s:save_buffer(1)
+    let s:infobuffer = {}
+    call s:twitter_wintext(s:format_user_list(output, title, a:followers || a:user != ''), "userinfo")
+    let s:infobuffer.buftype = buftype
+    let s:infobuffer.next_cursor = s:xml_get_element(output, 'next_cursor')
+    let s:infobuffer.prev_cursor = s:xml_get_element(output, 'previous_cursor')
+    let s:infobuffer.cursor = a:cursor
+    let s:infobuffer.user = a:user
+    let s:infobuffer.list = ''
+
+    redraw
+    echo substitute(what,'^.','\u&','') 'retrieved.'
+endfunction
+
+" Call Twitter API to get members or subscribers of list.
+function! s:get_list_members(cursor, user, list, subscribers)
+    let user = a:user
+    if user == ''
+	let user = s:get_twitvim_username()
+	if user == ''
+	    call s:errormsg('Twitter login not set. Please specify a username.')
+	    return
+	endif
+    endif
+
+    if a:subscribers
+	let item = "list subscribers"
+	let query = "/subscribers"
+	let buftype = "listsubs"
+	let title = 'Subscribers to list '.user.'/'.a:list
+    else
+	let item = "list members"
+	let query = "/members"
+	let buftype = "listmembers"
+	let title = 'Members of list '.user.'/'.a:list
+    endif
+
+    redraw
+    echo "Querying Twitter for ".item."..."
+
+    let url = s:get_api_root().'/'.user.'/'.a:list.query.'.xml?cursor='.a:cursor
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error getting ".item.": ".(errormsg != '' ? errormsg : error))
+	return
+    endif
+
+    call s:save_buffer(1)
+    let s:infobuffer = {}
+    call s:twitter_wintext(s:format_user_list(output, title, 1), 'userinfo')
+    let s:infobuffer.buftype = buftype
+    let s:infobuffer.next_cursor = s:xml_get_element(output, 'next_cursor')
+    let s:infobuffer.prev_cursor = s:xml_get_element(output, 'previous_cursor')
+    let s:infobuffer.cursor = a:cursor
+    let s:infobuffer.user = user
+    let s:infobuffer.list = a:list
+
+    redraw
+    echo "Retrieved ".item."."
+endfunction
+
+" Get Twitter list members. Need to do a little fiddling because the 
+" username argument is optional.
+function! s:DoListMembers(subscribers, arg1, ...)
+    let user = ''
+    let list = a:arg1
+    if a:0 > 0
+	let user = a:arg1
+	let list = a:1
+    endif
+    call s:get_list_members(-1, user, list, a:subscribers)
+endfunction
+
+" Format a list of lists, e.g. user's list memberships or list subscriptions.
+function! s:format_list_list(output, title)
+    let matchcount = 1
+    let text = []
+
+    let showheader = s:get_show_header()
+    if showheader
+	" The extra stars at the end are for the syntax highlighter to
+	" recognize the title. Then the syntax highlighter hides the stars by
+	" coloring them the same as the background. It is a bad hack.
+	call add(text, a:title.'*')
+	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
+    endif
+
+    while 1
+	let list = s:xml_get_nth(a:output, 'list', matchcount)
+	if list == ""
+	    break
+	endif
+	let matchcount += 1
+
+	let name = s:xml_get_element(list, 'full_name')
+	let following = s:xml_get_element(list, 'member_count')
+	let followers = s:xml_get_element(list, 'subscriber_count')
+	call add(text, 'List: '.name.' (Following: '.following.' Followers: '.followers.')')
+	let desc = s:convert_entity(s:xml_get_element(list, 'description'))
+	if desc != ""
+	    call add(text, desc)
+	endif
+	call add(text, '')
+    endwhile
+    return text
+endfunction
+
+" Call Twitter API to get a user's lists, list memberships, or list subscriptions.
+function! s:get_user_lists(cursor, user, what)
+    let user = a:user
+    if user == ''
+	let user = s:get_twitvim_username()
+	if user == ''
+	    call s:errormsg('Twitter login not set. Please specify a username.')
+	    return
+	endif
+    endif
+
+    if a:what == "owned"
+	let item = "lists"
+	let query = "lists"
+	let title = "Lists owned by ".user
+	let buftype = 'userlists'
+    elseif a:what == "memberships"
+	let item = "list memberships"
+	let query = "lists/memberships"
+	let title = "Lists following ".user
+	let buftype = 'userlistmem'
+    else
+	let item = "list subscriptions"
+	let query = "lists/subscriptions"
+	let title = "Lists followed by ".user
+	let buftype = 'userlistsubs'
+    endif
+
+    redraw
+    echo "Querying Twitter for user's ".item."..."
+
+    let url = s:get_api_root().'/'.user.'/'.query.'.xml?cursor='.a:cursor
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error getting user's ".item.": ".(errormsg != '' ? errormsg : error))
+	return
+    endif
+
+    call s:save_buffer(1)
+    let s:infobuffer = {}
+    call s:twitter_wintext(s:format_list_list(output, title), 'userinfo')
+    let s:infobuffer.buftype = buftype
+    let s:infobuffer.next_cursor = s:xml_get_element(output, 'next_cursor')
+    let s:infobuffer.prev_cursor = s:xml_get_element(output, 'previous_cursor')
+    let s:infobuffer.cursor = a:cursor
+    let s:infobuffer.user = user
+    let s:infobuffer.list = ''
+
+    redraw
+    echo "User's ".item." retrieved."
+endfunction
+
+" Function to load an info buffer from the given parameters.
+" For use by next/prev pagination commands.
+function! s:load_info(buftype, cursor, user, list)
+    if a:buftype == "friends"
+	call s:get_friends(a:cursor, a:user, 0)
+    elseif a:buftype == "followers"
+	call s:get_friends(a:cursor, a:user, 1)
+    elseif a:buftype == "listmembers"
+	call s:get_list_members(a:cursor, a:user, a:list, 0)
+    elseif a:buftype == "listsubs"
+	call s:get_list_members(a:cursor, a:user, a:list, 1)
+    elseif a:buftype == "userlists"
+	call s:get_user_lists(a:cursor, a:user, 'owned')
+    elseif a:buftype == "userlistmem"
+	call s:get_user_lists(a:cursor, a:user, 'memberships')
+    elseif a:buftype == "userlistsubs"
+	call s:get_user_lists(a:cursor, a:user, 'subscriptions')
+    elseif a:buftype == "profile"
+	call s:get_user_info(a:user)
+    endif
+endfunction
+
+" Go to next page in info buffer.
+function! s:NextPageInfo()
+    if s:infobuffer != {}
+	if s:infobuffer.next_cursor == 0
+	    call s:warnmsg("No next page in info buffer.")
+	else
+	    call s:load_info(s:infobuffer.buftype, s:infobuffer.next_cursor, s:infobuffer.user, s:infobuffer.list)
+	endif
+    else
+	call s:warnmsg("No info buffer.")
+    endif
+endfunction
+
+" Go to previous page in info buffer.
+function! s:PrevPageInfo()
+    if s:infobuffer != {}
+	if s:infobuffer.prev_cursor == 0
+	    call s:warnmsg("No previous page in info buffer.")
+	else
+	    call s:load_info(s:infobuffer.buftype, s:infobuffer.prev_cursor, s:infobuffer.user, s:infobuffer.list)
+	endif
+    else
+	call s:warnmsg("No info buffer.")
+    endif
+endfunction
+
+" Refresh info buffer.
+function! s:RefreshInfo()
+    if s:infobuffer != {}
+	call s:load_info(s:infobuffer.buftype, s:infobuffer.cursor, s:infobuffer.user, s:infobuffer.list)
+    else
+	call s:warnmsg("No info buffer.")
+    endif
+endfunction
+
+if !exists(":RefreshInfoTwitter")
+    command RefreshInfoTwitter :call <SID>RefreshInfo()
+endif
+if !exists(":NextInfoTwitter")
+    command NextInfoTwitter :call <SID>NextPageInfo()
+endif
+if !exists(":PreviousInfoTwitter")
+    command PreviousInfoTwitter :call <SID>PrevPageInfo()
+endif
+
+if !exists(":FollowingTwitter")
+    command -nargs=? FollowingTwitter :call <SID>get_friends(-1, <q-args>, 0)
+endif
+if !exists(":FollowersTwitter")
+    command -nargs=? FollowersTwitter :call <SID>get_friends(-1, <q-args>, 1)
+endif
+if !exists(":MembersOfListTwitter")
+    command -nargs=+ MembersOfListTwitter :call <SID>DoListMembers(0, <f-args>)
+endif
+if !exists(":SubsOfListTwitter")
+    command -nargs=+ SubsOfListTwitter :call <SID>DoListMembers(1, <f-args>)
+endif
+if !exists(":OwnedListsTwitter")
+    command -nargs=? OwnedListsTwitter :call <SID>get_user_lists(-1, <q-args>, "owned")
+endif
+if !exists(":MemberListsTwitter")
+    command -nargs=? MemberListsTwitter :call <SID>get_user_lists(-1, <q-args>, "memberships")
+endif
+if !exists(":SubsListsTwitter")
+    command -nargs=? SubsListsTwitter :call <SID>get_user_lists(-1, <q-args>, "subscriptions")
+endif
+
+" Follow or unfollow a list.
+function! s:follow_list(unfollow, arg1, ...)
+    if a:0 < 1
+	call s:errormsg('Please specify both a username and a list.')
+	return
+    endif
+    let user = a:arg1
+    let list = a:1
+
+    if a:unfollow
+	let v1 = "Unfollowing"
+	let v2 = "unfollowing"
+	let v3 = "Stopped following"
+    else
+	let v1 = "Following"
+	let v2 = "following"
+	let v3 = "Now following"
+    endif
+
+    redraw
+    echo v1." list ".user."/".list."..."
+
+    let parms = { "list_id" : list }
+    if a:unfollow
+	let parms["_method"] = "DELETE"
+    endif
+    let url = s:get_api_root()."/".user."/".list."/subscribers.xml"
+
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), parms)
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error ".v2." list: ".(errormsg != '' ? errormsg : error))
+    else
+	redraw
+	echo v3." list ".user."/".list."."
+    endif
+endfunction
+
+if !exists(":FollowListTwitter")
+    command -nargs=+ FollowListTwitter :call <SID>follow_list(0, <f-args>)
+endif
+if !exists(":UnfollowListTwitter")
+    command -nargs=+ UnfollowListTwitter :call <SID>follow_list(1, <f-args>)
+endif
 
 " Call Tweetburner API to shorten a URL.
 function! s:call_tweetburner(url)
@@ -3242,6 +3827,55 @@ function! s:call_zima(url)
     return output
 endfunction
 
+" Call Goo.gl API to shorten a URL.
+function! s:call_googl(url)
+    let url = "http://goo.gl/api/url"
+    let parms = { "url": a:url }
+
+    redraw
+    echo "Sending request to goo.gl..."
+
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), parms)
+
+    let matchres = matchlist(output, '"error_message":"\([^"]*\)"')
+    if matchres != []
+	call s:errormsg("Error calling goo.gl API: ".matchres[1])
+	return ""
+    endif
+
+    let matchres = matchlist(output, '"short_url":"\([^"]*\)"')
+    if matchres != []
+	redraw
+	echo "Received response from goo.gl."
+	return matchres[1]
+    endif
+
+    if error != ''
+	call s:errormsg("Error calling goo.gl API: ".error)
+	return ""
+    endif
+
+    call s:errormsg("No result returned by goo.gl API.")
+    return ""
+endfunction
+
+" Call Rga.la API to shorten a URL.
+function! s:call_rgala(url)
+    let url = 'http://rga.la/?url='.s:url_encode(a:url).'&format=plain'
+    redraw
+    echo "Sending request to Rga.la..."
+
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	call s:errormsg("Error calling Rga.la API: ".error)
+	return ""
+    endif
+
+    redraw
+    echo "Received response from Rga.la."
+    return output
+endfunction
+
 " Invoke URL shortening service to shorten a URL and insert it at the current
 " position in the current buffer.
 function! s:GetShortURL(tweetmode, url, shortfn)
@@ -3372,6 +4006,26 @@ if !exists(":PZima")
     command -nargs=? PZima :call <SID>GetShortURL("cmdline", <q-args>, "call_zima")
 endif
 
+if !exists(":Googl")
+    command -nargs=? Googl :call <SID>GetShortURL("insert", <q-args>, "call_googl")
+endif
+if !exists(":AGoogl")
+    command -nargs=? AGoogl :call <SID>GetShortURL("append", <q-args>, "call_googl")
+endif
+if !exists(":PGoogl")
+    command -nargs=? PGoogl :call <SID>GetShortURL("cmdline", <q-args>, "call_googl")
+endif
+
+if !exists(":Rgala")
+    command -nargs=? Rgala :call <SID>GetShortURL("insert", <q-args>, "call_rgala")
+endif
+if !exists(":ARgala")
+    command -nargs=? ARgala :call <SID>GetShortURL("append", <q-args>, "call_rgala")
+endif
+if !exists(":PRgala")
+    command -nargs=? PRgala :call <SID>GetShortURL("cmdline", <q-args>, "call_rgala")
+endif
+
 " Parse and format search results from Twitter Search API.
 function! s:show_summize(searchres, page)
     let text = []
@@ -3380,7 +4034,7 @@ function! s:show_summize(searchres, page)
     let s:curbuffer.dmids = []
 
     let channel = s:xml_remove_elements(a:searchres, 'entry')
-    let title = s:xml_get_element(channel, 'title')
+    let title = s:convert_entity(s:xml_get_element(channel, 'title'))
 
     if a:page > 1
 	let title .= ' (page '.a:page.')'
@@ -3453,7 +4107,7 @@ function! s:get_summize(query, page)
 	return
     endif
 
-    call s:save_buffer()
+    call s:save_buffer(0)
     let s:curbuffer = {}
     call s:show_summize(output, a:page)
     let s:curbuffer.buftype = "search"

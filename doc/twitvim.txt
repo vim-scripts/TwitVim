@@ -47,12 +47,13 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	3.6. Hide the header in timeline buffer...: |TwitVim-hide-header|
 	     twitvim_show_header..................: |twitvim_show_header|
 	4. Manual.................................: |TwitVim-manual|
-	4.1. Update Commands......................: |TwitVim-update-commands|
+	4.1. TwitVim's Buffers....................: |TwitVim-buffers|
+	4.2. Update Commands......................: |TwitVim-update-commands|
 	     :PosttoTwitter.......................: |:PosttoTwitter|
 	     :CPosttoTwitter......................: |:CPosttoTwitter|
 	     :BPosttoTwitter......................: |:BPosttoTwitter|
 	     :SendDMTwitter.......................: |:SendDMTwitter|
-	4.2. Timeline Commands....................: |TwitVim-timeline-commands|
+	4.3. Timeline Commands....................: |TwitVim-timeline-commands|
 	     :UserTwitter.........................: |:UserTwitter|
 	     twitvim_count........................: |twitvim_count|
 	     :FriendsTwitter......................: |:FriendsTwitter|
@@ -65,11 +66,25 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :RetweetedToMeTwitter................: |:RetweetedToMeTwitter|
 	     :RetweetedByMeTwitter................: |:RetweetedByMeTwitter|
 	     :FavTwitter..........................: |:FavTwitter|
+	     :FollowingTwitter....................: |:FollowingTwitter|
+	     :FollowersTwitter....................: |:FollowersTwitter|
+	     :MembersOfListTwitter................: |:MembersOfListTwitter|
+	     :SubsOfListTwitter...................: |:SubsOfListTwitter|
+	     :OwnedListsTwitter...................: |:OwnedListsTwitter|
+	     :MemberListsTwitter..................: |:MemberListsTwitter|
+	     :SubsListsTwitter....................: |:SubsListsTwitter|
+	     :FollowListTwitter...................: |:FollowListTwitter|
+	     :UnfollowListTwitter.................: |:UnfollowListTwitter|
 	     :BackTwitter.........................: |:BackTwitter|
+	     :BackInfoTwitter.....................: |:BackInfoTwitter|
 	     :ForwardTwitter......................: |:ForwardTwitter|
+	     :ForwardInfoTwitter..................: |:ForwardInfoTwitter|
 	     :RefreshTwitter......................: |:RefreshTwitter|
+	     :RefreshInfoTwitter..................: |:RefreshInfoTwitter|
 	     :NextTwitter.........................: |:NextTwitter|
+	     :NextInfoTwitter.....................: |:NextInfoTwitter|
 	     :PreviousTwitter.....................: |:PreviousTwitter|
+	     :PreviousInfoTwitter.................: |:PreviousInfoTwitter|
 	     :SetLoginTwitter.....................: |:SetLoginTwitter|
 	     :ResetLoginTwitter...................: |:ResetLoginTwitter|
 	     :FollowTwitter.......................: |:FollowTwitter|
@@ -79,7 +94,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :ReportSpamTwitter...................: |:ReportSpamTwitter|
 	     :AddToListTwitter....................: |:AddToListTwitter|
 	     :RemoveFromListTwitter...............: |:RemoveFromListTwitter|
-	4.3. Mappings.............................: |TwitVim-mappings|
+	4.4. Mappings.............................: |TwitVim-mappings|
 	     Alt-T................................: |TwitVim-A-t|
 	     Ctrl-T...............................: |TwitVim-C-t|
 	     Reply Feature........................: |TwitVim-reply|
@@ -116,7 +131,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     Ctrl-PageDown........................: |TwitVim-C-PageDown|
 	     Previous page........................: |TwitVim-previous|
 	     Ctrl-PageUp..........................: |TwitVim-C-PageUp|
-	4.4. Utility Commands.....................: |TwitVim-utility|
+	4.5. Utility Commands.....................: |TwitVim-utility|
 	     :Tweetburner.........................: |:Tweetburner|
 	     :ATweetburner........................: |:ATweetburner|
 	     :PTweetburner........................: |:PTweetburner|
@@ -152,6 +167,12 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	     :Zima................................: |:Zima|
 	     :AZima...............................: |:AZima|
 	     :PZima...............................: |:PZima|
+	     :Googl...............................: |:Googl|
+	     :AGoogl..............................: |:AGoogl|
+	     :PGoogl..............................: |:PGoogl|
+	     :Rgala...............................: |:Rgala|
+	     :ARgala..............................: |:ARgala|
+	     :PRgala..............................: |:PRgala|
 	     :SearchTwitter.......................: |:SearchTwitter|
 	     :RateLimitTwitter....................: |:RateLimitTwitter|
 	     :ProfileTwitter......................: |:ProfileTwitter|
@@ -650,13 +671,14 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 
 ------------------------------------------------------------------------------
-3.6. Hide the header in timeline buffer			*TwitVim-hide-header*
+3.6. Hide the header in timeline and info buffers	*TwitVim-hide-header*
 
-	In a timeline buffer, the first two lines are header lines. The first
-	line tells you the type of buffer it is (e.g. friends, user, replies,
-	direct messages, search) and other relevant buffer information. (e.g.
-	user name, search terms, page number) The second line is a separator
-	line.
+	In the timeline and info buffers, the first two lines are header
+	lines. The first line tells you the type of buffer it is (e.g.
+	friends, user, replies, direct messages, search in the timeline
+	buffer; friends, followers, user profile in the info buffer) and other
+	relevant buffer information. (e.g. user name, search terms, page
+	number) The second line is a separator line.
 
 	If you wish to suppress the header display, set twitvim_show_header
 	to 0:
@@ -669,7 +691,8 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	header.
 
 	Note: Setting twitvim_show_header does not change the timeline buffer
-	immediately. Use |:RefreshTwitter| to refresh the timeline to see the
+	immediately. Use |:RefreshTwitter| to refresh the timeline (or
+	|:RefreshInfoTwitter| to refresh the info buffer) to see the
 	effect. Also, twitvim_show_header does not retroactively alter
 	previous timelines in the timeline stack.
 
@@ -678,11 +701,37 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 4. TwitVim Manual					*TwitVim-manual*
 
 ------------------------------------------------------------------------------
-4.1. Update Commands				*TwitVim-update-commands*
+4.1. TwitVim's Buffers					*TwitVim-buffers*
+
+	TwitVim has 2 buffers, a timeline buffer and an info buffer.
+
+	Commands such as |:FriendsTwitter|, |:MentionsTwitter|, |:DMTwitter|,
+	and |:ListTwitter| bring up a timeline buffer. This buffer consists of
+	a list of tweets or messages. See |TwitVim-mappings| for a list of
+	mappings that are local to this buffer.
+
+	Commands such as |:ProfileTwitter|, |:FollowingTwitter|,
+	|:FollowersTwitter|, and |:OwnedListsTwitter| bring up an info buffer.
+	This buffer may consist of a list of users or a list of Twitter lists.
+	In the case of |:ProfileTwitter|, it is a list of fields from one user
+	profile. Only a subset of the mappings in |:TwitVim-mappings| will
+	work in the info buffer.
+
+	TwitVim brings up a new timeline buffer only if one does not already
+	exist. Otherwise, it reuses the existing timeline buffer. The same
+	behavior applies to the info buffer.
+
+
+------------------------------------------------------------------------------
+4.2. Update Commands				*TwitVim-update-commands*
 
 	These commands post an update to your Twitter account. If the friends,
 	user, or public timeline is visible, TwitVim will insert the update
 	into the timeline view after posting it.
+
+	Note: If you are replying to a tweet, use the <Leader>r mapping in the
+	timeline buffer instead. See |TwitVim-reply|. That mapping will set
+	the in-reply-to field, which :PosttoTwitter can't handle.
 
 	:PosttoTwitter					*:PosttoTwitter*
 
@@ -706,7 +755,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	the most common reason for this error when sending a direct message.
 
 ------------------------------------------------------------------------------
-4.2. Timeline Commands				*TwitVim-timeline-commands*
+4.3. Timeline Commands				*TwitVim-timeline-commands*
 
 	These commands retrieve a Twitter timeline and display it in a special
 	Twitter buffer. TwitVim applies syntax highlighting to highlight
@@ -831,6 +880,75 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	timeline.
 
 
+	:FollowingTwitter				*:FollowingTwitter*
+	:FollowingTwitter {user}
+
+	This command displays a list of people you're following.
+
+	If {user} is specified, this command displays a list of people that
+	user is following.
+
+	You can use Ctrl-PageUp and Ctrl-PageDown to page back and forth in
+	this list. See |TwitVim-previous| and |TwitVim-next|.
+
+
+	:FollowersTwitter				*:FollowersTwitter*
+	:FollowersTwitter {user}
+
+	This command displays a list of people who follow you.
+
+	If {user} is specified, this command displays a list of people
+	following that user.
+
+	You can use Ctrl-PageUp and Ctrl-PageDown to page back and forth in
+	this list. See |TwitVim-previous| and |TwitVim-next|.
+
+
+	:MembersOfListTwitter {list}			*:MembersOfListTwitter*
+	:MembersOfListTwitter {user} {list}
+
+	This command displays members of the Twitter list {list} owned by 
+	user {user}. If not specified, {user} is the currently logged-in user.
+
+
+	:SubsOfListTwitter {list}			*:SubsOfListTwitter*
+	:SubsOfListTwitter {user} {list}
+
+	This command displays subscribers to the Twitter list {list} owned by 
+	user {user}. If not specified, {user} is the currently logged-in user.
+
+
+	:OwnedListsTwitter				*:OwnedListsTwitter*
+	:OwnedListsTwitter {user}
+
+	This command displays the lists owned by {user}. If not specified,
+	{user} is the currently logged-in user.
+
+
+	:MemberListsTwitter				*:MemberListsTwitter*
+	:MemberListsTwitter {user}
+
+	This command displays the lists following {user}. If not specified,
+	{user} is the currently logged-in user.
+
+
+	:SubsListsTwitter				*:SubsListsTwitter*
+	:SubsListsTwitter {user}
+
+	This command displays the lists followed by {user}. If not specified,
+	{user} is the currently logged-in user.
+
+
+	:FollowListTwitter {user} {list}		*:FollowListTwitter*
+
+	Start following the list {list} owned by {user}.
+
+
+	:UnfollowListTwitter {user} {list}		*:UnfollowListTwitter*
+
+	Stop following the list {list} owned by {user}.
+
+
 	:BackTwitter					*:BackTwitter*
 
 	This command takes you back to the previous timeline in the timeline
@@ -839,17 +957,34 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	timeline. See |TwitVim-C-o|.
 
 
+	:BackInfoTwitter				*:BackInfoTwitter*
+
+	This command is similar to |:BackTwitter| but takes you to the
+	previous display in the info buffer stack instead. See |TwitVim-C-o|.
+
+
 	:ForwardTwitter					*:ForwardTwitter*
 
 	This command takes you to the next timeline in the timeline stack.
 	It will display a warning if you attempt to go past the newest saved
 	timeline so this command can only be used after :BackTwitter.
 	See |TwitVim-C-i|.
+	
+
+	:ForwardInfoTwitter				*:ForwardInfoTwitter*
+
+	This command is similar to |:ForwardTwitter| but takes you to the
+	next display in the info buffer stack instead. See |TwitVim-C-o|.
 
 
 	:RefreshTwitter					*:RefreshTwitter*
 
 	This command refreshes the timeline. See |TwitVim-Leader-Leader|.
+
+
+	:RefreshInfoTwitter				*:RefreshInfoTwitter*
+
+	This command refreshes the info buffer. See |TwitVim-Leader-Leader|.
 
 
 	:NextTwitter					*:NextTwitter*
@@ -858,11 +993,24 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	See |TwitVim-C-PageDown|.
 
 
+	:NextInfoTwitter				*:NextInfoTwitter*
+
+	This command loads the next page in the info buffer.
+	See |TwitVim-C-PageDown|.
+
+
 	:PreviousTwitter				*:PreviousTwitter*
 
 	This command loads the previous (newer) page in the timeline. If the
-	timeline is on the first page, it issues a warning and doesn't do
-	anything. See |TwitVim-C-PageUp|.
+	timeline is on the first page, this command issues a warning and
+	doesn't do anything. See |TwitVim-C-PageUp|.
+
+
+	:PreviousInfoTwitter				*:PreviousInfoTwitter*
+
+	This command loads the previous page in the info buffer. If the info
+	buffer is on the first page, this command issues a warning and doesn't
+	do anything. See |TwitVim-C-PageUp|.
 
 
 	:SetLoginTwitter				*:SetLoginTwitter*
@@ -928,7 +1076,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 
 ------------------------------------------------------------------------------
-4.3. Mappings						*TwitVim-mappings*
+4.4. Mappings						*TwitVim-mappings*
 
 	Alt-T						*TwitVim-A-t*
 	Ctrl-T						*TwitVim-C-t*
@@ -1021,7 +1169,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	Alt-G						*TwitVim-A-g*
 	<Leader>g					*TwitVim-Leader-g*
 
-	This mapping is local to the timeline and user profile buffers. It
+	This mapping is local to the timeline and info buffers. It
 	launches the web browser with the URL at the cursor position. If you
 	visually select text before invoking this mapping, it launches the web
 	browser with the selected text as is.
@@ -1029,6 +1177,9 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	As a special case, if the cursor is on a word of the form @user or
 	user:, TwitVim will display that user's timeline in the timeline
 	buffer. This will not launch the web browser.
+
+	Also, this mapping recognizes the Name: line in the info buffer and
+	displays that user's timeline.
 
 	In addition, if the cursor is on a word of the form #hashtag, TwitVim
 	will do a Twitter Search for that #hashtag. This too will not launch
@@ -1046,7 +1197,7 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 							*TwitVim-LongURL*
 	<Leader>e					*TwitVim-Leader-e*
 
-	This mapping is local to the timeline and user profile buffers. It
+	This mapping is local to the timeline and info buffers. It
 	calls the LongURL API (see http://longurl.org/) to expand the short
 	URL at the cursor position. A short URL is a URL from a URL shortening
 	service such as TinyURL, SnipURL, etc. Use this feature if you wish to
@@ -1062,13 +1213,13 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 							*TwitVim-profile*
 	<Leader>p					*TwitVim-Leader-p*
 
-	This mapping is local to the timeline and user profile buffers. It
+	This mapping is local to the timeline and info buffers. It
 	calls the Twitter API to retrieve user profile information (e.g. name,
 	location, bio, update count) for the user name at the cursor position.
-	It displays the information in a user profile buffer.
+	It displays the profile information in an info buffer.
 
 	If you visually select text before invoking this mapping, it uses the
-	selected text as is for the user name.
+	selected text for the user name.
 
 	See also |:ProfileTwitter|.
 
@@ -1119,10 +1270,17 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	This mapping takes you to the previous timeline in the timeline stack.
 	See |:BackTwitter|.
 
+	This mapping also works in the info buffer but uses a separate history
+	stack. See |:BackInfoTwitter|.
+
+
 	Ctrl-I						*TwitVim-C-i*
 
 	This mapping takes you to the next timeline in the timeline stack.
 	See |:ForwardTwitter|.
+
+	This mapping also works in the info buffer but uses a separate history
+	stack. See |:ForwardInfoTwitter|.
 
 
 							*TwitVim-refresh*
@@ -1130,12 +1288,20 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 
 	This mapping refreshes the timeline. See |:RefreshTwitter|.
 
+	This mapping also works in the info buffer but is of limited utility
+	there because that info shouldn't change as often as a timeline.
+	See |:RefreshInfoTwitter|.
+
 
 							*TwitVim-next*
 	Ctrl-PageDown					*TwitVim-C-PageDown*
 
 	This mapping loads the next (older) page in the timeline.
 	See |:NextTwitter|.
+
+	This mapping also works in the info buffer but only if the list is
+	long enough to use more than one page. It does nothing in the user
+	profile display. See |:NextInfoTwitter|.
 
 	
 							*TwitVim-previous*
@@ -1145,9 +1311,13 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	timeline is on the first page, it issues a warning and doesn't do
 	anything. See |:PreviousTwitter|.
 
+	This mapping also works in the info buffer but only if the list is
+	long enough to use more than one page. It does nothing in the user
+	profile display. See |:PreviousInfoTwitter|.
+
 
 ------------------------------------------------------------------------------
-4.4. Utility Commands					*TwitVim-utility*
+4.5. Utility Commands					*TwitVim-utility*
 
 	:Tweetburner					*:Tweetburner*
 	:Tweetburner {url}
@@ -1443,6 +1613,54 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	short URL already inserted.
 
 
+	:Googl						*:Googl*
+	:Googl {url}
+
+	Goo.gl is Google's URL forwarding and shortening service.
+	See http://goo.gl/
+
+	This command calls the goo.gl API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:AGoogl						*:AGoogl*
+	:AGoogl {url}
+
+	Same as :Googl but appends, i.e. inserts after the current position
+	instead of at the current position, the short URL instead.
+
+	:PGoogl						*:PGoogl*
+	:PGoogl {url}
+	
+	Same as :Googl but prompts for a tweet on the command line with the
+	short URL already inserted.
+
+
+	:Rgala						*:Rgala*
+	:Rgala {url}
+
+	Rga.la is SoFurry.com's URL forwarding and shortening service.
+	See http://rga.la/
+
+	This command calls the Rga.la API to get a short URL in place of
+	<url>. If {url} is not provided on the command line, the command will
+	prompt you to enter a URL. The short URL is then inserted into the
+	current buffer at the current position.
+
+	:ARgala						*:ARgala*
+	:ARgala {url}
+
+	Same as :Rgala but appends, i.e. inserts after the current position
+	instead of at the current position, the short URL instead.
+
+	:PRgala						*:PRgala*
+	:PRgala {url}
+	
+	Same as :Rgala but prompts for a tweet on the command line with the
+	short URL already inserted.
+
+
 	:[count]SearchTwitter					*:SearchTwitter*
 	:[count]SearchTwitter {query}
 	
@@ -1470,11 +1688,15 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 	rate limit. This command does not work on identi.ca.
 
 
-	:ProfileTwitter {username}			*:ProfileTwitter*
+	:ProfileTwitter					*:ProfileTwitter*
+	:ProfileTwitter {username}
 
 	This command calls the Twitter API to retrieve user profile
 	information (e.g. name, location, bio, update count) for the specified
-	user. It displays the information in a user profile buffer.
+	user {username}. It displays the information in an info buffer.
+
+	If {username} is not specified, this command will retrieve
+	information for the currently logged-in user.
 
 	See also |TwitVim-Leader-p|.
 
@@ -1590,6 +1812,32 @@ License: The Vim License applies to twitvim.vim and twitvim.txt (see
 ==============================================================================
 7. TwitVim History					*TwitVim-history*
 
+	0.6.0 : 2010-10-27 * Added |:FollowingTwitter|, |:FollowersTwitter|.
+			   * Added |:MembersOfListTwitter|,
+			     |:SubsOfListTwitter|, |:OwnedListsTwitter|,
+			     |:MemberListsTwitter|, |:SubsListsTwitter|,
+			     |:FollowListTwitter|, |:UnfollowListTwitter|.
+			   * Added support for goo.gl |:Googl| and Rga.la.
+			     |:Rgala|
+			   * Extended |TwitVim-Leader-g| to support Name: lines
+			     in user profile and following/followers lists.
+			   * Added history stack for info buffer.
+			   * Added |:BackInfoTwitter|, |:ForwardInfoTwitter|,
+			     |:RefreshInfoTwitter|, |:NextInfoTwitter|,
+			     |:PreviousInfoTwitter| for the info buffer. Also
+			     added support for |TwitVim-C-PageDown| and
+			     |TwitVim-C-PageUp| in info buffer.
+			   * Added twitvim filetype for user customization
+			     via autocommands.
+			   * Changed display of retweets to show the full
+			     version instead of the truncated version
+			     when the retweeted status is near the 
+			     character limit.
+			   * |:ProfileTwitter| with no argument now shows
+			     info on logged-in user.
+			   * Make |TwitVim-Leader-@| work on new-style
+			     retweets by showing the retweeted status
+			     as the parent.
 	0.5.6 : 2010-09-19 * Exception handling for Python net interface.
 			   * Added converter functions for non-UTF8 encoding
 			     by @mattn_jp.
