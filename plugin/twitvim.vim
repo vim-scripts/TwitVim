@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.6.2
+" Version: 0.6.3
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: February 23, 2011
+" Last updated: April 22, 2011
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.6.2 2011-02-17'
+let s:user_agent = 'TwitVim 0.6.3 2011-04-22'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -107,6 +107,16 @@ endfunction
 " User config to disable the OAuth access token file.
 function! s:get_disable_token_file()
     return exists('g:twitvim_disable_token_file') ? g:twitvim_disable_token_file : 0
+endfunction
+
+" User config to enable the filter.
+function! s:get_filter_enable()
+    return exists('g:twitvim_filter_enable') ? g:twitvim_filter_enable : 0
+endfunction
+
+" User config for filter.
+function! s:get_filter_regex()
+    return exists('g:twitvim_filter_regex') ? g:twitvim_filter_regex : ''
 endfunction
 
 
@@ -2105,6 +2115,10 @@ function! s:show_inreplyto()
     echo "Querying Twitter for in-reply-to tweet..."
 
     let url = s:get_api_root()."/statuses/show/".inreplyto.".xml"
+
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
+
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -2566,7 +2580,7 @@ function! s:twitter_win_syntax(wintype)
 
 	" Use the extra star at the end to recognize the title but hide the
 	" star.
-	syntax match twitterTitle /^.\+\*$/ contains=twitterTitleStar
+	syntax match twitterTitle /^\%(\w\+:\)\@!.\+\*$/ contains=twitterTitleStar
 	syntax match twitterTitleStar /\*$/ contained
 
 	highlight default link twitterUser Identifier
@@ -2723,8 +2737,54 @@ function! s:format_retweeted_status(item)
 	return ''
     endif
     let user = s:xml_get_element(rt, 'screen_name')
-    let text = s:convert_entity(s:xml_get_element(rt, 'text'))
+    let text = s:convert_entity(s:get_status_text(rt))
     return 'RT @'.user.': '.text
+endfunction
+
+" Replace all matching strings in a string. This is a non-regex version of substitute().
+function! s:str_replace_all(str, findstr, replstr)
+    let findlen = strlen(a:findstr)
+    let repllen = strlen(a:replstr)
+    let s = a:str
+
+    let idx = 0
+    while 1
+	let idx = stridx(s, a:findstr, idx)
+	if idx < 0
+	    break
+	endif
+	let s = strpart(s, 0, idx) . a:replstr . strpart(s, idx + findlen)
+	let idx += repllen
+    endwhile
+
+    return s
+endfunction
+
+" Get status text with t.co URL expansion.
+function! s:get_status_text(item)
+    let text = s:xml_get_element(a:item, 'text')
+
+    let entities = s:xml_get_element(a:item, 'entities')
+    let urls = s:xml_get_element(entities, 'urls')
+
+    " Twitter entities output currently has a url element inside each url
+    " element, so we handle that by only getting every other url element.
+    let matchcount = 1
+    while 1
+	let url = s:xml_get_nth(urls, 'url', matchcount * 2)
+	let expanded_url = s:xml_get_nth(urls, 'expanded_url', matchcount)
+
+	if url == '' || expanded_url == ''
+	    break
+	endif
+
+	" echomsg "Replacing ".url." with ".expanded_url." in ".text
+	let text = s:str_replace_all(text, url, expanded_url)
+
+	let matchcount += 1
+    endwhile
+
+    return text
 endfunction
 
 " Format XML status as a display line.
@@ -2738,7 +2798,7 @@ function! s:format_status_xml(item)
     let user = s:xml_get_element(item, 'screen_name')
     let text = s:format_retweeted_status(a:item)
     if text == ''
-	let text = s:convert_entity(s:xml_get_element(item, 'text'))
+	let text = s:convert_entity(s:get_status_text(item))
     endif
     let pubdate = s:time_filter(s:xml_get_element(item, 'created_at'))
 
@@ -2750,6 +2810,21 @@ endfunction
 function! s:get_in_reply_to(status)
     let rt = s:xml_get_element(a:status, 'retweeted_status')
     return rt != '' ? s:xml_get_element(rt, 'id') : s:xml_get_element(a:status, 'in_reply_to_status_id')
+endfunction
+
+" If the filter is enabled, test the current item against the filter. Returns
+" true if there is a match and the item should be excluded from the timeline.
+function! s:check_filter(item)
+    if s:get_filter_enable()
+	let filter = s:get_filter_regex()
+	if filter != ''
+	    let text = s:convert_entity(s:get_status_text(a:item))
+	    if match(text, filter) >= 0
+		return 1
+	    endif
+	endif
+    endif
+    return 0
 endfunction
 
 " Show a timeline from XML stream data.
@@ -2804,11 +2879,13 @@ function! s:show_timeline_xml(timeline, tline_name, username, page)
 	    break
 	endif
 
-	call add(s:curbuffer.statuses, s:xml_get_element(item, 'id'))
-	call add(s:curbuffer.inreplyto, s:get_in_reply_to(item))
+	if !s:check_filter(item)
+	    call add(s:curbuffer.statuses, s:xml_get_element(item, 'id'))
+	    call add(s:curbuffer.inreplyto, s:get_in_reply_to(item))
 
-	let line = s:format_status_xml(item)
-	call add(text, line)
+	    let line = s:format_status_xml(item)
+	    call add(text, line)
+	endif
 
 	let matchcount += 1
     endwhile
@@ -2839,6 +2916,9 @@ function! s:get_timeline(tline_name, username, page)
 
     " Include retweets.
     let url_fname = s:add_to_url(url_fname, 'include_rts=true')
+
+    " Include entities to get URL expansions for t.co.
+    let url_fname = s:add_to_url(url_fname, 'include_entities=true')
 
     " Twitter API allows you to specify a username for user_timeline to
     " retrieve another user's timeline.
@@ -2910,6 +2990,9 @@ function! s:get_list_timeline(username, listname, page)
 	let url = s:add_to_url(url, 'per_page='.tcount)
     endif
 
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
+
     redraw
     echo "Sending list timeline request to Twitter..."
 
@@ -2979,7 +3062,7 @@ function! s:show_dm_xml(sent_or_recv, timeline, page)
 	call add(s:curbuffer.dmids, s:xml_get_element(item, 'id'))
 
 	let user = s:xml_get_element(item, a:sent_or_recv == 'sent' ? 'recipient_screen_name' : 'sender_screen_name')
-	let mesg = s:xml_get_element(item, 'text')
+	let mesg = s:get_status_text(item)
 	let date = s:time_filter(s:xml_get_element(item, 'created_at'))
 
 	call add(text, user.": ".s:convert_entity(mesg).' |'.date.'|')
@@ -3005,6 +3088,9 @@ function! s:Direct_Messages(mode, page)
     if a:page > 1
 	let url = s:add_to_url(url, 'page='.a:page)
     endif
+    
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
 
     " Support count parameter.
     let tcount = s:get_count()
@@ -3537,7 +3623,7 @@ function! s:format_user_info(output, fship_output)
 
     let statusnode = s:xml_get_element(output, 'status')
     if statusnode != ""
-	let status = s:xml_get_element(statusnode, 'text')
+	let status = s:get_status_text(statusnode)
 	let pubdate = s:time_filter(s:xml_get_element(statusnode, 'created_at'))
 	call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
     endif
@@ -3562,6 +3648,10 @@ function! s:get_user_info(username)
     echo "Querying Twitter for user information..."
 
     let url = s:get_api_root()."/users/show.xml?screen_name=".user
+
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
+
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -3709,7 +3799,7 @@ function! s:format_user_list(output, title, show_following)
 
 	let statusnode = s:xml_get_element(user, 'status')
 	if statusnode != ""
-	    let status = s:xml_get_element(statusnode, 'text')
+	    let status = s:get_status_text(statusnode)
 	    let pubdate = s:time_filter(s:xml_get_element(statusnode, 'created_at'))
 	    call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
 	endif
@@ -3750,6 +3840,9 @@ function! s:get_friends(cursor, user, followers)
     if a:user != ''
 	let url = s:add_to_url(url, 'screen_name='.a:user)
     endif
+
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
@@ -3799,6 +3892,10 @@ function! s:get_list_members(cursor, user, list, subscribers)
     echo "Querying Twitter for ".item."..."
 
     let url = s:get_api_root().'/'.user.'/'.a:list.query.'.xml?cursor='.a:cursor
+
+    " Include entities to get URL expansions for t.co.
+    let url = s:add_to_url(url, 'include_entities=true')
+
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -3859,7 +3956,7 @@ function! s:format_list_list(output, title)
 	call add(text, 'List: '.name.' (Following: '.following.' Followers: '.followers.')')
 	let desc = s:convert_entity(s:xml_get_element(list, 'description'))
 	if desc != ""
-	    call add(text, desc)
+	    call add(text, 'Desc: '.desc)
 	endif
 	call add(text, '')
     endwhile
