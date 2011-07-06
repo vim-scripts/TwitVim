@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.6.3
+" Version: 0.7.0
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: April 22, 2011
+" Last updated: July 6, 2011
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.6.3 2011-04-22'
+let s:user_agent = 'TwitVim 0.7.0 2011-07-06'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -156,10 +156,11 @@ endfunction
 " Dummy login string to force OAuth signing in run_curl_oauth().
 let s:ologin = "oauth:oauth"
 
-" Reset login info.
+" Throw away saved login tokens and reset login info.
 function! s:reset_twitvim_login()
     let s:access_token = ""
     let s:access_token_secret = ""
+    let s:tokens = {}
     call delete(s:get_token_file())
 
     let s:cached_username = ""
@@ -204,11 +205,41 @@ function! s:check_twitvim_login()
     return 1
 endfunction
 
-" Throw away OAuth access tokens and log in again. This is meant to allow the
-" user to switch to a different Twitter account.
+" Log in to a Twitter account.
 function! s:prompt_twitvim_login()
-    call s:reset_twitvim_login()
-    call s:check_twitvim_login()
+    call s:do_login()
+endfunction
+
+" Switch to a different Twitter user.
+function! s:switch_twitvim_login(user)
+    let user = a:user
+    if user == ''
+	let namelist = s:list_tokens()
+	if namelist == []
+	    call s:errormsg('No logins to switch to. Use :SetLoginTwitter to log in.')
+	    return
+	endif
+
+	let menu = []
+	call add(menu, 'Choose a login to switch to:')
+	let namecount = 0
+	for name in namelist
+	    let namecount += 1
+	    call add(menu, namecount.'. '.name)
+	endfor
+
+	call inputsave()
+	let input = inputlist(menu)
+	call inputrestore()
+	if input < 1 || input > len(namelist)
+	    " Invalid input cancels the command.
+	    return
+	endif
+
+	let user = namelist[input - 1]
+    endif
+    call s:switch_token(user)
+    call s:write_tokens(s:cached_username)
 endfunction
 
 let s:cached_login = ''
@@ -248,7 +279,7 @@ function! s:get_twitvim_username()
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
 	call s:errormsg("Error verifying login credentials: ".(errormsg != '' ? errormsg : error))
-	return
+	return ''
     endif
 
     redraw
@@ -272,264 +303,16 @@ endfunction
 
 " === JSON parser ===
 
-let s:parse_string = {}
-
-function! s:set_parse_string(s)
-    let s:parse_string = { 'str' : a:s, 'ptr' : 0 }
-endfunction
-
-function! s:is_digit(c)
-    return a:c =~ '\d'
-endfunction
-
-function! s:is_hexdigit(c)
-    return a:c =~ '\x'
-endfunction
-
-function! s:is_alpha(c)
-    return a:c =~ '\a'
-endfunction
-
-" Get next character. If peek is true, don't advance string pointer.
-function! s:lookahead_char(peek)
-    let str = s:parse_string.str
-    let len = strlen(str)
-    let ptr = s:parse_string.ptr
-    if ptr >= len
-	return ''
-    endif
-    if str[ptr] == '\'
-	if ptr + 1 < len
-	    if stridx('"\/bfnrt', str[ptr + 1]) >= 0
-		let s = eval('"\'.str[ptr + 1].'"')
-		if !a:peek
-		    let s:parse_string.ptr = ptr + 2
-		endif
-		" Tokenizer needs to distinguish " from \" inside a string.
-		return '\'.s
-	    elseif str[ptr + 1] == 'u'
-		let s = ''
-		for i in range(ptr + 2, ptr + 5)
-		    if i < len && s:is_hexdigit(str[i])
-			let s .= str[i]
-		    endif
-		endfor
-		if s != ''
-		    let s2 = eval('"\u'.s.'"')
-		    if !a:peek
-			let s:parse_string.ptr = ptr + 2 + strlen(s)
-		    endif
-		    return s2
-		endif
-	    endif
-	endif
-    endif
-
-    " If we don't recognize any longer char tokens, just return the current
-    " char.
-    let s = str[ptr]
-    if !a:peek
-	let s:parse_string.ptr = ptr + 1
-    endif
-    return s
-endfunction
-
-function! s:getchar()
-    return s:lookahead_char(0)
-endfunction
-
-function! s:peekchar()
-    return s:lookahead_char(1)
-endfunction
-
-function! s:peekstr(n)
-    return strpart(s:parse_string.str, s:parse_string.ptr, a:n)
-endfunction
-
-function! s:parse_error_msg(what)
-    return printf("Parse error near '%s': %s", s:peekstr(30), a:what)
-endfunction
-
-" Get next token from JSON string.
-" Returns: [ tokentype, value ]
-function! s:get_token()
-    while 1
-	let c = s:getchar()
-
-	if c == ''
-	    return [ 'eof', '' ]
-	
-	elseif c == '"'
-	    let s = ''
-	    while 1
-		let c = s:getchar()
-		if c == '"' || c == ''
-		    return ['string', s]
-		endif
-		" Strip off the escaping backslash.
-		if c[0] == '\'
-		    let c = c[1]
-		endif
-		let s .= c
-	    endwhile
-
-	elseif stridx('{}[],:', c) >= 0
-	    return [ 'char', c ]
-
-	elseif s:is_alpha(c)
-	    let s = c
-	    while s:is_alpha(s:peekchar())
-		let c = s:getchar()
-		let s .= c
-	    endwhile
-	    return [ 'keyword', s ]
-
-	elseif s:is_digit(c) || c == '-'
-	    " number = [-]d[d...][.d[d...]][(e|E)[(-|+)]d[d...]]
-	    let mode = 'int'
-	    let s = c
-	    while 1
-		let c = s:peekchar()
-		if s:is_digit(c)
-		    let c = s:getchar()
-		    let s .= c
-		elseif c == '.' && mode == 'int'
-		    let mode = 'frac'
-		    let c = s:getchar()
-		    let s .= c
-		elseif (c == 'e' || c == 'E') && (mode == 'int' || mode == 'frac')
-		    let mode = 'exp'
-		    let c = s:getchar()
-		    let s .= c
-
-		    let c = s:peekchar()
-		    if c == '-' || c == '+'
-			let c = s:getchar()
-			let s .= c
-		    endif
-		else
-		    " Clean up some malformed floating-point numbers that Vim
-		    " would reject.
-		    let s = substitute(s, '^\.', '0.', '')
-		    let s = substitute(s, '-\.', '-0.', '')
-		    let s = substitute(s, '\.[eE]', '.0E', '')
-		    let s = substitute(s, '[-+eE.]$', '&0', '')
-
-		    " This takes care of the case where there is
-		    " an exponent but no frac part.
-		    if s =~ '[Ee]' && s != '\.'
-			let s = substitute(s, '[Ee]', '.0&', '')
-		    endif
-
-		    return ['number', eval(s)]
-		endif
-	    endwhile
-	endif
-    endwhile
-endfunction
-
-" value = string | number | object | array | true | false | null
-function! s:parse_value(tok)
-    let tok = a:tok
-    if tok[0] == 'string' || tok[0] == 'number'
-	return [ tok[1], s:get_token() ]
-    elseif tok == [ 'char', '{' ]
-	return s:parse_object(tok)
-    elseif tok == [ 'char', '[' ]
-	return s:parse_array(tok)
-    elseif tok[0] == 'keyword'
-	if tok[1] == 'true'
-	    return [ 1, s:get_token() ]
-	elseif tok[1] == 'false'
-	    return [ 0, s:get_token() ]
-	elseif tok[1] == 'null'
-	    return [ {}, s:get_token() ]
-	else
-	    throw s:parse_error_msg("unrecognized keyword '".tok[1]."'")
-	endif
-    elseif tok[0] == 'eof'
-	throw s:parse_error_msg("unexpected EOF")
-    endif
-endfunction
-
-" elements = value | value ',' elements
-function! s:parse_elements(tok)
-    let [ resultx, tok ] = s:parse_value(a:tok)
-    let result = [ resultx ]
-    if tok == [ 'char', ',' ]
-	let [ result2, tok ] = s:parse_elements(s:get_token())
-	call extend(result, result2)
-    endif
-    return [ result, tok ]
-endfunction
-
-" array = '[' ']' | '[' elements ']'
-function! s:parse_array(tok)
-    if a:tok == [ 'char', '[' ]
-	let tok = s:get_token()
-	if tok == [ 'char', ']' ]
-	    return [ [], s:get_token() ]
-	endif
-	let [ result, tok ] = s:parse_elements(tok)
-	if tok != [ 'char', ']' ]
-	    throw s:parse_error_msg("']' expected")
-	endif
-	return [ result, s:get_token() ]
-    else
-	throw s:parse_error_msg("'[' expected")
-    endif
-endfunction
-
-" pair = string ':' value
-function! s:parse_pair(tok)
-    if a:tok[0] == 'string'
-	let key = a:tok[1]
-	let tok = s:get_token()
-	if tok == [ 'char', ':' ]
-	    let [ result, tok ] = s:parse_value(s:get_token())
-	    return [ { key : result }, tok ]
-	else
-	    throw s:parse_error_msg("':' expected")
-	endif
-    else
-	throw s:parse_error_msg("string (key name) expected")
-    endif
-endfunction
-
-" members = pair | pair ',' members
-function! s:parse_members(tok)
-    let [ result, tok ] = s:parse_pair(a:tok)
-    if tok == [ 'char', ',' ]
-	let [ result2, tok ] = s:parse_members(s:get_token())
-	call extend(result, result2)
-    endif
-    return [ result, tok ]
-endfunction
-
-" object = '{' '}' | '{' members '}'
-function! s:parse_object(tok)
-    if a:tok == [ 'char', '{' ]
-	let tok = s:get_token()
-	if tok == [ 'char', '}' ]
-	    return [ {}, s:get_token() ]
-	endif
-	let [ result, tok ] = s:parse_members(tok)
-	if tok != [ 'char', '}' ]
-	    throw s:parse_error_msg("'}' expected")
-	endif
-	return [ result, s:get_token() ]
-    else
-	throw s:parse_error_msg("'{' expected")
-    endif
-endfunction
-
 function! s:parse_json(str)
     try
-	call s:set_parse_string(a:str)
-	let [ result, tok ] = s:parse_object(s:get_token())
+	let true = 1
+	let false = 0
+	let null = ''
+	sandbox let result = eval(a:str)
 	return result
-    catch /^Parse error/
-	echoerr v:exception
+    catch
+	call s:errormsg('JSON parse error: '.v:exception)
+	return {}
     endtry
 endfunction
 
@@ -539,6 +322,22 @@ endfunction
 function! s:xml_get_nth(xmlstr, elem, n)
     let matchres = matchlist(a:xmlstr, '<'.a:elem.'\%( [^>]*\)\?>\(.\{-}\)</'.a:elem.'>', -1, a:n)
     return matchres == [] ? "" : matchres[1]
+endfunction
+
+" Get all elements in a series of elements.
+function! s:xml_get_all(xmlstr, elem)
+    let pat = '<'.a:elem.'\%( [^>]*\)\?>\(.\{-}\)</'.a:elem.'>'
+    let matches = []
+    let pos = 0
+
+    while 1
+	let matchres = matchlist(a:xmlstr, pat, pos)
+	if matchres == []
+	    return matches
+	endif
+	call add(matches, matchres[1])
+	let pos = matchend(a:xmlstr, pat, pos)
+    endwhile
 endfunction
 
 " Get the content of the specified element.
@@ -668,6 +467,131 @@ function! s:time_filter(str)
 endfunction
 
 " === End of time parser ===
+
+" === Token Management code ===
+
+" Each token record holds the following fields:
+"
+" token: access token
+" secret: access token secret
+" name: screen name
+" A lowercased copy of the screen name is the hash key.
+
+let s:tokens = {}
+let s:token_header = 'TwitVim 0.6'
+
+function! s:find_token(name)
+    return get(s:tokens, tolower(a:name), {})
+endfunction
+
+function! s:save_token(tokenrec)
+    let tokenrec = a:tokenrec
+    let s:tokens[tolower(tokenrec.name)] = tokenrec
+endfunction
+
+" Switch to another access token. Note that the token file should be written
+" out again after this to reflect the new current user.
+function! s:switch_token(name)
+    let tokenrec = s:find_token(a:name)
+    if tokenrec == {}
+	call s:errormsg("Can't switch to user ".a:name.".")
+    else
+	let s:access_token = tokenrec.token
+	let s:access_token_secret = tokenrec.secret
+	let s:cached_username = tokenrec.name
+	redraw
+	echo "Logged in as ".s:cached_username."."
+    endif
+endfunction
+
+" Returns a list of screen names. This is for prompting the user to pick a login
+" to which to switch.
+function! s:list_tokens()
+    let names = []
+    for tokenrec in values(s:tokens)
+	" Need to use the names in the token records rather than keys(s:tokens)
+	" in order to present screen names in original case instead of all
+	" lowercase.
+	call add(names, tokenrec.name)
+    endfor
+    return names
+endfunction
+    
+" Returns a newline-delimited list of screen names. This is for command
+" completion when switching logins.
+function! s:name_list_tokens(ArgLead, CmdLine, CursorPos)
+    return join(s:list_tokens(), "\n")
+endfunction
+
+
+" Write the token file.
+function! s:write_tokens(current_user)
+    if !s:get_disable_token_file()
+	let tokenfile = s:get_token_file()
+
+	let lines = []
+	call add(lines, s:token_header)
+	call add(lines, a:current_user)
+	for tokenrec in values(s:tokens)
+	    call add(lines, tokenrec.name)
+	    call add(lines, tokenrec.token)
+	    call add(lines, tokenrec.secret)
+	endfor
+
+	if writefile(lines, tokenfile) < 0
+	    call s:errormsg('Error writing token file: '.v:errmsg)
+	endif
+
+	" Check and change file permissions for security.
+	if has('unix')
+	    let perms = getfperm(tokenfile)
+	    if perms != '' && perms[-6:] != '------'
+		silent! execute "!chmod go-rwx '".tokenfile."'"
+	    endif
+	endif
+    endif
+endfunction
+
+" Read the token file.
+function! s:read_tokens()
+    let tokenfile = s:get_token_file()
+    if !s:get_disable_token_file() && filereadable(tokenfile)
+	let [hdr, current_user; tokens] = readfile(tokenfile, 't', 500)
+	if tokens == []
+	    " Legacy token file only has token and secret.
+	    let s:access_token = hdr
+	    let s:access_token_secret = current_user
+	    let s:cached_username = ''
+
+	    let user = s:get_twitvim_username()
+	    if user == ''
+		call s:errormsg('Invalid token in token file. Please relogin with :SetLoginTwitter.')
+		return
+	    endif
+
+	    let tokenrec = {}
+	    let tokenrec.token = s:access_token
+	    let tokenrec.secret = s:access_token_secret
+	    let tokenrec.name = user
+
+	    call s:save_token(tokenrec)
+	    call s:write_tokens(user)
+	else
+	    " New token file contains tokens, 3 lines per record.
+	    for i in range(0, len(tokens) - 1, 3)
+		let tokenrec = {}
+		let tokenrec.name = tokens[i]
+		let tokenrec.token = tokens[i + 1]
+		let tokenrec.secret = tokens[i + 2]
+		call s:save_token(tokenrec)
+	    endfor
+	    call s:switch_token(current_user)
+	endif
+    endif
+endfunction
+
+
+" === End of Token Management code ===
 
 " === OAuth code ===
 
@@ -966,7 +890,7 @@ function! s:do_oauth()
 
     if error != ''
 	call s:errormsg("Error from oauth/request_token: ".error)
-	return [-1, '', '']
+	return [-1, '', '', '']
     endif
 
     let matchres = matchlist(output, 'oauth_token=\([^&]\+\)&')
@@ -1001,7 +925,7 @@ function! s:do_oauth()
 	echo auth_url
     else
 	if s:launch_browser(auth_url) < 0
-	    return [-2, '', '']
+	    return [-2, '', '', '']
 	endif
     endif
 
@@ -1011,7 +935,7 @@ function! s:do_oauth()
 
     if pin == ""
 	call s:warnmsg("No OAuth PIN entered")
-	return [-3, '', '']
+	return [-3, '', '', '']
     endif
 
     " Call oauth/access_token to swap request token for access token.
@@ -1024,7 +948,7 @@ function! s:do_oauth()
 
     if error != ''
 	call s:errormsg("Error from oauth/access_token: ".error)
-	return [-4, '', '']
+	return [-4, '', '', '']
     endif
 
     let matchres = matchlist(output, 'oauth_token=\([^&]\+\)&')
@@ -1037,38 +961,46 @@ function! s:do_oauth()
 	let token_secret = matchres[1]
     endif
 
-    return [ 0, request_token, token_secret ]
+    let matchres = matchlist(output, 'screen_name=\([^&]\+\)')
+    if matchres != []
+	let screen_name = matchres[1]
+    endif
+
+    return [ 0, request_token, token_secret, screen_name ]
+endfunction
+
+" Perform an OAuth login.
+function! s:do_login()
+    let [ retval, s:access_token, s:access_token_secret, s:cached_username ] = s:do_oauth()
+    if retval < 0
+	return [ -1, "Error from do_oauth(): ".retval ]
+    endif
+
+    let tokenrec = {}
+    let tokenrec.token = s:access_token
+    let tokenrec.secret = s:access_token_secret
+    let tokenrec.name = s:cached_username
+    call s:save_token(tokenrec)
+    call s:write_tokens(s:cached_username)
+
+    redraw
+    echo "Logged in as ".s:cached_username."."
+
+    return [ 0, '' ]
 endfunction
 
 " Sign a request with OAuth and send it.
 function! s:run_curl_oauth(url, login, proxy, proxylogin, parms)
     if a:login != '' && a:url =~ 'twitter\.com'
+
+	" Get access tokens from token file or do OAuth login.
 	if !exists('s:access_token') || s:access_token == ''
-
-	    let tokens = []
-
-	    if !s:get_disable_token_file() && filereadable(s:get_token_file())
-		" Try to read access tokens from token file.
-		let tokens = readfile(s:get_token_file(), "t", 3)
-	    endif
-
-	    if tokens == []
-
-		" If unsuccessful at reading token file, do the OAuth handshake.
-		let [ retval, s:access_token, s:access_token_secret ] = s:do_oauth()
-		if retval < 0
-		    return [ "Error from do_oauth(): ".retval, '' ]
+	    call s:read_tokens()
+	    if !exists('s:access_token') || s:access_token == ''
+		let [ status, error ] = s:do_login()
+		if status < 0
+		    return [ error, '' ]
 		endif
-
-		if !s:get_disable_token_file()
-		    " Save access tokens to the token file.
-		    let v:errmsg = ""
-		    if writefile([ s:access_token, s:access_token_secret ], s:get_token_file()) < 0
-			call s:errormsg('Error writing token file: '.v:errmsg)
-		    endif
-		endif
-	    else
-		let [s:access_token, s:access_token_secret] = tokens
 	    endif
 	endif
 
@@ -2764,6 +2696,9 @@ endfunction
 function! s:get_status_text(item)
     let text = s:xml_get_element(a:item, 'text')
 
+    " Remove nul characters.
+    let text = substitute(text, '[\x0]', ' ', 'g')
+
     let entities = s:xml_get_element(a:item, 'entities')
     let urls = s:xml_get_element(entities, 'urls')
 
@@ -2784,6 +2719,25 @@ function! s:get_status_text(item)
 	let matchcount += 1
     endwhile
 
+    return text
+endfunction
+
+" Get status text with t.co URL expansion.
+function! s:get_status_text_json(status)
+    let text = a:status.text
+
+    " Remove nul characters.
+    let text = substitute(text, '[\x0]', ' ', 'g')
+
+    if has_key(a:status, 'entities')
+	let entities = a:status.entities
+	let urls = entities.urls
+	for url in urls
+	    if url.expanded_url != ''
+		let text = s:str_replace_all(text, url.url, url.expanded_url)
+	    endif
+	endfor
+    endif
     return text
 endfunction
 
@@ -2829,7 +2783,6 @@ endfunction
 
 " Show a timeline from XML stream data.
 function! s:show_timeline_xml(timeline, tline_name, username, page)
-    let matchcount = 1
     let text = []
 
     let s:curbuffer.dmids = []
@@ -2873,12 +2826,7 @@ function! s:show_timeline_xml(timeline, tline_name, username, page)
 	let s:curbuffer.inreplyto = [0]
     endif
 
-    while 1
-	let item = s:xml_get_nth(a:timeline, 'status', matchcount)
-	if item == ""
-	    break
-	endif
-
+    for item in s:xml_get_all(a:timeline, 'status')
 	if !s:check_filter(item)
 	    call add(s:curbuffer.statuses, s:xml_get_element(item, 'id'))
 	    call add(s:curbuffer.inreplyto, s:get_in_reply_to(item))
@@ -2886,9 +2834,8 @@ function! s:show_timeline_xml(timeline, tline_name, username, page)
 	    let line = s:format_status_xml(item)
 	    call add(text, line)
 	endif
+    endfor
 
-	let matchcount += 1
-    endwhile
     call s:twitter_wintext(text, "timeline")
     let s:curbuffer.buffer = text
 endfunction
@@ -2977,7 +2924,7 @@ function! s:get_list_timeline(username, listname, page)
 	endif
     endif
 
-    let url = "/".user."/lists/".a:listname."/statuses.xml"
+    let url = s:get_api_root().'/lists/statuses.xml?slug='.a:listname.'&owner_screen_name='.user
 
     " Support pagination.
     if a:page > 1
@@ -2988,15 +2935,17 @@ function! s:get_list_timeline(username, listname, page)
     let tcount = s:get_count()
     if tcount > 0
 	let url = s:add_to_url(url, 'per_page='.tcount)
+	let url = s:add_to_url(url, 'count='.tcount)
     endif
 
     " Include entities to get URL expansions for t.co.
     let url = s:add_to_url(url, 'include_entities=true')
 
+    " Include retweets.
+    let url = s:add_to_url(url, 'include_rts=true')
+
     redraw
     echo "Sending list timeline request to Twitter..."
-
-    let url = s:get_api_root().url
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
 
@@ -3016,14 +2965,12 @@ function! s:get_list_timeline(username, listname, page)
     redraw
     call s:save_buffer(0)
 
-    " Uppercase the first letter in the timeline name.
     echo "List timeline updated for ".user."/".a:listname
 endfunction
 
 " Show direct message sent or received by user. First argument should be 'sent'
 " or 'received' depending on which timeline we are displaying.
 function! s:show_dm_xml(sent_or_recv, timeline, page)
-    let matchcount = 1
     let text = []
 
     "No status IDs in direct messages.
@@ -3053,12 +3000,7 @@ function! s:show_dm_xml(sent_or_recv, timeline, page)
 	let s:curbuffer.dmids = [0]
     endif
 
-    while 1
-	let item = s:xml_get_nth(a:timeline, 'direct_message', matchcount)
-	if item == ""
-	    break
-	endif
-
+    for item in s:xml_get_all(a:timeline, 'direct_message')
 	call add(s:curbuffer.dmids, s:xml_get_element(item, 'id'))
 
 	let user = s:xml_get_element(item, a:sent_or_recv == 'sent' ? 'recipient_screen_name' : 'sender_screen_name')
@@ -3066,9 +3008,8 @@ function! s:show_dm_xml(sent_or_recv, timeline, page)
 	let date = s:time_filter(s:xml_get_element(item, 'created_at'))
 
 	call add(text, user.": ".s:convert_entity(mesg).' |'.date.'|')
+    endfor
 
-	let matchcount += 1
-    endwhile
     call s:twitter_wintext(text, "timeline")
     let s:curbuffer.buffer = text
 endfunction
@@ -3237,6 +3178,9 @@ endif
 if !exists(":ResetLoginTwitter")
     command ResetLoginTwitter :call <SID>reset_twitvim_login()
 endif
+if !exists(':SwitchLoginTwitter')
+    command -nargs=? -complete=custom,<SID>name_list_tokens SwitchLoginTwitter :call <SID>switch_twitvim_login(<q-args>)
+endif
 
 nnoremenu Plugin.TwitVim.-Sep2- :
 nnoremenu Plugin.TwitVim.Set\ Twitter\ Login :call <SID>prompt_twitvim_login()<cr>
@@ -3365,7 +3309,7 @@ function! s:follow_user(user)
     let parms = {}
     let parms["screen_name"] = a:user
 
-    let url = s:get_api_root()."/friendships/create/".a:user.".xml"
+    let url = s:get_api_root().'/friendships/create.xml'
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), parms)
     if error != ''
@@ -3514,18 +3458,18 @@ function! s:add_to_list(remove, listname, username)
     redraw
     if a:remove
 	echo "Removing ".a:username." from list ".a:listname."..."
+	let verb = 'destroy'
     else
 	echo "Adding ".a:username." to list ".a:listname."..."
+	let verb = 'create'
     endif
 
     let parms = {}
-    let parms["list_id"] = a:listname
-    let parms["id"] = a:username
-    if a:remove
-	let parms["_method"] = "DELETE"
-    endif
+    let parms['slug'] = a:listname
+    let parms['owner_screen_name'] = user
+    let parms['screen_name'] = a:username
 
-    let url = s:get_api_root()."/".user."/".a:listname."/members.xml"
+    let url = s:get_api_root().'/lists/members/'.verb.'.xml'
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), parms)
     if error != ''
@@ -3716,7 +3660,7 @@ function! s:get_list_info(username, listname)
     redraw
     echo 'Querying Twitter for information on list '.user.'/'.list.'...'
 
-    let url = s:get_api_root().'/'.user.'/lists/'.list.'.xml'
+    let url = s:get_api_root().'/lists/show.xml?slug='.list.'&owner_screen_name='.user
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -3756,7 +3700,6 @@ endif
 
 " Format a list of users, e.g. friends/followers list.
 function! s:format_user_list(output, title, show_following)
-    let matchcount = 1
     let text = []
 
     let showheader = s:get_show_header()
@@ -3768,13 +3711,7 @@ function! s:format_user_list(output, title, show_following)
 	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
     endif
 
-    while 1
-	let user = s:xml_get_nth(a:output, 'user', matchcount)
-	if user == ""
-	    break
-	endif
-	let matchcount += 1
-
+    for user in s:xml_get_all(a:output, 'user')
 	let following_str = ''
 	if a:show_following
 	    let following = s:xml_get_element(user, 'following')
@@ -3805,8 +3742,138 @@ function! s:format_user_list(output, title, show_following)
 	endif
 
 	call add(text, '')
-    endwhile
+    endfor
     return text
+endfunction
+
+" Format a list of users, e.g. friends/followers list.
+function! s:format_user_list_json(users, title, show_following)
+    let text = []
+
+    let showheader = s:get_show_header()
+    if showheader
+	" The extra stars at the end are for the syntax highlighter to
+	" recognize the title. Then the syntax highlighter hides the stars by
+	" coloring them the same as the background. It is a bad hack.
+	call add(text, a:title.'*')
+	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
+    endif
+
+    for user in a:users
+
+	let following_str = ''
+	if a:show_following
+	    let following = user.following
+	    if following
+		let following_str = ' Following'
+	    else
+		let following_str = user.follow_request_sent ? ' Follow request sent' : ' Not following'
+	    endif
+	endif
+
+	let name = s:convert_entity(user.name)
+	let screen = user.screen_name
+	let location = s:convert_entity(user.location)
+	let slocation = location == '' ? '' : '|'.location
+	call add(text, 'Name: '.screen.' ('.name.slocation.')'.following_str)
+
+	let desc = user.description
+	if desc != ''
+	    call add(text, 'Bio: '.s:convert_entity(desc))
+	endif
+
+	if has_key(user, 'status')
+	    let statusnode = user.status
+	    let status = s:get_status_text_json(statusnode)
+	    let pubdate = s:time_filter(statusnode.created_at)
+	    call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
+	endif
+
+	call add(text, '')
+    endfor
+    return text
+endfunction
+
+" Call Twitter API to get friends or followers list.
+function! s:get_friends_json(cursor, index, user, followers)
+    if a:followers
+	let buftype = 'followers'
+	let query = '/followers/ids.json'
+	if a:user != ''
+	    let what = 'followers list of '.a:user
+	    let title = 'People following '.a:user
+	else
+	    let what = 'followers list'
+	    let title = 'People following you'
+	endif
+    else
+	let buftype = 'friends'
+	let query = '/friends/ids.json'
+	if a:user != ''
+	    let what = 'friends list of '.a:user
+	    let title = 'People '.a:user.' is following'
+	else
+	    let what = 'friends list'
+	    let title = "People you're following"
+	endif
+    endif
+
+    redraw
+    echo "Querying Twitter for ".what."..."
+
+    let url = s:get_api_root().query.'?cursor='.a:cursor
+    if a:user != ''
+	let url = s:add_to_url(url, 'screen_name='.a:user)
+    endif
+
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
+    let result = s:parse_json(output)
+    if error != ''
+	call s:errormsg("Error getting ".what.": ".(has_key(result, 'error') ? result.error : error))
+	return
+    endif
+
+    if !has_key(result, 'ids')
+	call s:errormsg('Bad result from '.query)
+	return
+    endif
+
+    let idlist = result.ids
+
+    let idslice = idlist[a:index : a:index + 99]
+    let url = s:get_api_root().'/users/lookup.json?include_entities=true&user_id='.join(idslice, ',')
+    let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
+    let lookup_result = s:parse_json(output)
+    if error != ''
+	call s:errormsg("Error getting ".what.": ".(has_key(lookup_result, 'error') ? lookup_result.error : error))
+	return
+    endif
+
+    let userhash = {}
+    for user in lookup_result
+	let userhash[user.id] = user
+    endfor
+
+    " Sort users in the same order as the list of IDs.
+    let users = []
+    for id in idslice
+	if has_key(userhash, id)
+	    call add(users, userhash[id])
+	endif
+    endfor
+
+    call s:save_buffer(1)
+    let s:infobuffer = {}
+    call s:twitter_wintext(s:format_user_list_json(users, title, a:followers || a:user != ''), "userinfo")
+    let s:infobuffer.buftype = buftype
+    let s:infobuffer.next_cursor = result.next_cursor
+    let s:infobuffer.prev_cursor = result.previous_cursor
+    let s:infobuffer.cursor = a:cursor
+    let s:infobuffer.user = a:user
+    let s:infobuffer.list = ''
+    redraw
+    call s:save_buffer(1)
+    echo substitute(what,'^.','\u&','') 'retrieved.'
 endfunction
 
 " Call Twitter API to get friends or followers list.
@@ -3891,7 +3958,7 @@ function! s:get_list_members(cursor, user, list, subscribers)
     redraw
     echo "Querying Twitter for ".item."..."
 
-    let url = s:get_api_root().'/'.user.'/'.a:list.query.'.xml?cursor='.a:cursor
+    let url = s:get_api_root().'/lists'.query.'.xml?cursor='.a:cursor.'&slug='.a:list.'&owner_screen_name='.user
 
     " Include entities to get URL expansions for t.co.
     let url = s:add_to_url(url, 'include_entities=true')
@@ -3931,7 +3998,6 @@ endfunction
 
 " Format a list of lists, e.g. user's list memberships or list subscriptions.
 function! s:format_list_list(output, title)
-    let matchcount = 1
     let text = []
 
     let showheader = s:get_show_header()
@@ -3943,13 +4009,7 @@ function! s:format_list_list(output, title)
 	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
     endif
 
-    while 1
-	let list = s:xml_get_nth(a:output, 'list', matchcount)
-	if list == ""
-	    break
-	endif
-	let matchcount += 1
-
+    for list in s:xml_get_all(a:output, 'list')
 	let name = s:xml_get_element(list, 'full_name')
 	let following = s:xml_get_element(list, 'member_count')
 	let followers = s:xml_get_element(list, 'subscriber_count')
@@ -3959,42 +4019,41 @@ function! s:format_list_list(output, title)
 	    call add(text, 'Desc: '.desc)
 	endif
 	call add(text, '')
-    endwhile
+    endfor
     return text
 endfunction
 
 " Call Twitter API to get a user's lists, list memberships, or list subscriptions.
 function! s:get_user_lists(cursor, user, what)
     let user = a:user
+    let titlename = user
     if user == ''
-	let user = s:get_twitvim_username()
-	if user == ''
-	    call s:errormsg('Twitter login not set. Please specify a username.')
-	    return
-	endif
+	let titlename = 'you'
     endif
-
     if a:what == "owned"
 	let item = "lists"
 	let query = "lists"
-	let title = "Lists owned by ".user
+	let title = "Lists owned by ".titlename
 	let buftype = 'userlists'
     elseif a:what == "memberships"
 	let item = "list memberships"
 	let query = "lists/memberships"
-	let title = "Lists following ".user
+	let title = "Lists following ".titlename
 	let buftype = 'userlistmem'
     else
 	let item = "list subscriptions"
 	let query = "lists/subscriptions"
-	let title = "Lists followed by ".user
+	let title = "Lists followed by ".titlename
 	let buftype = 'userlistsubs'
     endif
 
     redraw
     echo "Querying Twitter for user's ".item."..."
 
-    let url = s:get_api_root().'/'.user.'/'.query.'.xml?cursor='.a:cursor
+    let url = s:get_api_root().'/'.query.'.xml?cursor='.a:cursor
+    if user != ''
+	let url = s:add_to_url(url, 'screen_name='.user)
+    endif
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
     if error != ''
 	let errormsg = s:xml_get_element(output, 'error')
@@ -4086,9 +4145,11 @@ if !exists(":PreviousInfoTwitter")
 endif
 
 if !exists(":FollowingTwitter")
+"     command -nargs=? FollowingTwitter :call <SID>get_friends_json(-1, 0, <q-args>, 0)
     command -nargs=? FollowingTwitter :call <SID>get_friends(-1, <q-args>, 0)
 endif
 if !exists(":FollowersTwitter")
+"     command -nargs=? FollowersTwitter :call <SID>get_friends_json(-1, 0, <q-args>, 1)
     command -nargs=? FollowersTwitter :call <SID>get_friends(-1, <q-args>, 1)
 endif
 if !exists(":MembersOfListTwitter")
@@ -4120,20 +4181,21 @@ function! s:follow_list(unfollow, arg1, ...)
 	let v1 = "Unfollowing"
 	let v2 = "unfollowing"
 	let v3 = "Stopped following"
+	let verb = 'destroy'
     else
 	let v1 = "Following"
 	let v2 = "following"
 	let v3 = "Now following"
+	let verb = 'create'
     endif
 
     redraw
     echo v1." list ".user."/".list."..."
 
-    let parms = { "list_id" : list }
-    if a:unfollow
-	let parms["_method"] = "DELETE"
-    endif
-    let url = s:get_api_root()."/".user."/".list."/subscribers.xml"
+    let parms = {}
+    let parms['slug'] = list
+    let parms['owner_screen_name'] = user
+    let url = s:get_api_root().'/lists/subscribers/'.verb.'.xml'
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), parms)
     if error != ''
@@ -4421,6 +4483,9 @@ function! s:call_googl(url)
 
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), parms)
 
+    " Remove nul characters.
+    let output = substitute(output, '[\x0]', ' ', 'g')
+
     let result = s:parse_json(output)
 
     if has_key(result, 'error') && has_key(result.error, 'message')
@@ -4656,7 +4721,6 @@ endif
 " Parse and format search results from Twitter Search API.
 function! s:show_summize(searchres, page)
     let text = []
-    let matchcount = 1
 
     let s:curbuffer.dmids = []
 
@@ -4686,12 +4750,7 @@ function! s:show_summize(searchres, page)
 	let s:curbuffer.inreplyto = [0]
     endif
 
-    while 1
-	let item = s:xml_get_nth(a:searchres, 'entry', matchcount)
-	if item == ""
-	    break
-	endif
-
+    for item in s:xml_get_all(a:searchres, 'entry')
 	let title = s:xml_get_element(item, 'title')
 	let pubdate = s:time_filter(s:xml_get_element(item, 'updated'))
 	let sender = substitute(s:xml_get_element(item, 'uri'), 'http://twitter.com/', '', '')
@@ -4701,9 +4760,7 @@ function! s:show_summize(searchres, page)
 	call add(s:curbuffer.statuses, status)
 
 	call add(text, sender.": ".s:convert_entity(title).' |'.pubdate.'|')
-
-	let matchcount += 1
-    endwhile
+    endfor
     call s:twitter_wintext(text, "timeline")
     let s:curbuffer.buffer = text
 endfunction
