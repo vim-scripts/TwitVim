@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.7.0
+" Version: 0.7.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: July 6, 2011
+" Last updated: September 21, 2011
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.7.0 2011-07-06'
+let s:user_agent = 'TwitVim 0.7.1 2011-09-21'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -117,6 +117,12 @@ endfunction
 " User config for filter.
 function! s:get_filter_regex()
     return exists('g:twitvim_filter_regex') ? g:twitvim_filter_regex : ''
+endfunction
+
+" User config for Trends WOEID.
+" Default to 1 for worldwide.
+function! s:get_twitvim_woeid()
+    return exists('g:twitvim_woeid') ? g:twitvim_woeid : 1
 endfunction
 
 
@@ -1080,7 +1086,12 @@ function! s:curl_curl(url, login, proxy, proxylogin, parms)
     for [k, v] in items(a:parms)
 	if k == '__json'
 	    let got_json = 1
-	    let curlcmd .= '-d "'.substitute(v, '"', '\\"', 'g').'" '
+	    let vsub = substitute(v, '"', '\\"', 'g')
+	    if  has('win32') || has('win64')
+		" Under Windows only, we need to quote some special characters.
+		let vsub = substitute(vsub, '[\\&|><^]', '"&"', 'g')
+	    endif
+	    let curlcmd .= '-d "'.vsub.'" '
 	else
 	    let curlcmd .= '-d "'.s:url_encode(k).'='.s:url_encode(v).'" '
 	endif
@@ -1582,7 +1593,7 @@ endif
 " Each buffer record holds the following fields:
 "
 " buftype: Buffer type = dmrecv, dmsent, search, public, friends, user, 
-"   replies, list, retweeted_by_me, retweeted_to_me, favorites
+"   replies, list, retweeted_by_me, retweeted_to_me, favorites, trends
 " user: For user buffers if other than current user
 " list: List slug if displaying a Twitter list.
 " page: Keep track of pagination.
@@ -1607,6 +1618,10 @@ let s:curbuffer = {}
 " buffer: The buffer text.
 " view: viewport saved with winsaveview()
 " showheader: 1 if header is shown in this buffer, 0 if header is hidden.
+" 
+" flist: List of friends/followers IDs.
+" findex: Starting index within flist of the friends/followers info displayed
+" in this buffer.
 
 let s:infobuffer = {}
 
@@ -2222,17 +2237,28 @@ function! s:launch_browser(url)
     endif
 
     let startcmd = has("win32") || has("win64") ? "!start " : "! "
-    let endcmd = has("unix") ? "&" : ""
+
+    " Discard unnecessary output from UNIX browsers. So far, this is known to
+    " happen only in the Linux version of Google Chrome when it opens a tab in
+    " an existing browser window.
+    let endcmd = has('unix') ? '> /dev/null &' : ''
 
     " Escape characters that have special meaning in the :! command.
     let url = substitute(a:url, '!\|#\|%', '\\&', 'g')
+
+    " Escape the '&' character under Unix. This character is valid in URLs but
+    " causes the shell to background the process and cut off the URL at that
+    " point.
+    if has('unix')
+	let url = substitute(url, '&', '\\&', 'g')
+    endif
 
     redraw
     echo "Launching web browser..."
     let v:errmsg = ""
     silent! execute startcmd g:twitvim_browser_cmd url endcmd
     if v:errmsg == ""
-	redraw
+	redraw!
 	echo "Web browser launched."
     else
 	call s:errormsg('Error launching browser: '.v:errmsg)
@@ -2283,6 +2309,14 @@ function! s:launch_url_cword(infobuf)
 	    return
 	endif
     else
+	" In a trending topics list, the whole line is a search term.
+	if s:curbuffer.buftype == 'trends'
+	    if !s:curbuffer.showheader || line('.') > 2
+		call s:get_summize(getline('.'), 1)
+	    endif
+	    return
+	endif
+
 	if col('.') == 1 && s == '+'
 	    " If the cursor is on the '+' in a reply expansion, use the second
 	    " word instead.
@@ -2480,6 +2514,7 @@ function! s:convert_entity(str)
     let s = substitute(s, '&quot;', '"', 'g')
     " let s = substitute(s, '&#\(\d\+\);','\=nr2char(submatch(1))', 'g')
     let s = substitute(s, '&#\(\d\+\);','\=s:nr2enc_char(submatch(1))', 'g')
+    let s = substitute(s, '&#x\(\x\+\);','\=s:nr2enc_char("0x".submatch(1))', 'g')
     return s
 endfunction
 
@@ -2719,25 +2754,6 @@ function! s:get_status_text(item)
 	let matchcount += 1
     endwhile
 
-    return text
-endfunction
-
-" Get status text with t.co URL expansion.
-function! s:get_status_text_json(status)
-    let text = a:status.text
-
-    " Remove nul characters.
-    let text = substitute(text, '[\x0]', ' ', 'g')
-
-    if has_key(a:status, 'entities')
-	let entities = a:status.entities
-	let urls = entities.urls
-	for url in urls
-	    if url.expanded_url != ''
-		let text = s:str_replace_all(text, url.url, url.expanded_url)
-	    endif
-	endfor
-    endif
     return text
 endfunction
 
@@ -3059,6 +3075,256 @@ function! s:Direct_Messages(mode, page)
     echo "Direct messages ".s_or_r." timeline updated."
 endfunction
 
+" === Trends Code ===
+
+let s:woeid_list = {}
+
+" Get master list of WOEIDs from Twitter API.
+function! s:get_woeids()
+    if s:woeid_list != {}
+	return s:woeid_list
+    endif
+
+    redraw
+    echo "Retrieving list of WOEIDs..."
+
+    let url = s:get_api_root().'/trends/available.xml'
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error retrieving list of WOEIDs: ".(errormsg != '' ? errormsg : error))
+	return {}
+    endif
+
+    for location in s:xml_get_all(output, 'location')
+	let name = s:xml_get_element(location, 'name')
+	let woeid = s:xml_get_element(location, 'woeid')
+	let placetype = s:xml_get_element(location, 'placeTypeName')
+	let country = s:xml_get_element(location, 'country')
+
+	if placetype == 'Supername'
+	    let s:woeid_list[name] = { 'woeid' : woeid, 'towns' : {} }
+	elseif placetype == 'Country' 
+	    if !has_key(s:woeid_list, country)
+		let s:woeid_list[country] = { 'towns' : {} }
+	    endif
+	    let s:woeid_list[country]['woeid'] = woeid
+	elseif placetype == 'Town'
+	    if !has_key(s:woeid_list, country)
+		let s:woeid_list[country] = { 'towns' : {} }
+	    endif
+	    let s:woeid_list[country]['towns'][name] = { 'woeid' : woeid }
+	else
+	    call s:errormsg('Unknown location type "'.placetype.'".')
+	    return {}
+	endif
+    endfor
+
+    redraw
+    echo "Retrieved list of WOEIDs."
+
+    return s:woeid_list
+endfunction
+
+function! s:get_woeid_pagelen()
+    let maxlen = &lines - 3
+    if maxlen < 5
+	call s:errormsg('Window is not tall enough for menu.')
+	return -1
+    endif
+    return maxlen < 20 ? maxlen : 20
+endfunction
+
+function! s:comp_countries(a, b)
+    if a:a == 'Worldwide'
+	return -1
+    elseif a:b == 'Worldwide'
+	return 1
+    elseif a:a == 'United States'
+	return -1
+    elseif a:b == 'United States'
+	return 1
+    elseif a:a == a:b
+	return 0
+    elseif a:a < a:b
+	return -1
+    else
+	return 1
+    endif
+endfunction
+
+function! s:get_country_list()
+    return sort(keys(s:woeid_list), 's:comp_countries')
+endfunction
+
+function! s:get_town_list(country)
+    return [ a:country ] + sort(keys(s:woeid_list[a:country]['towns']))
+endfunction
+
+function! s:get_woeid(country, town)
+    if a:town == '' || a:town == a:country
+	return s:woeid_list[a:country]['woeid']
+    else
+	return s:woeid_list[a:country]['towns'][a:town]['woeid']
+    endif
+endfunction
+
+function! s:make_loc_menu(what, namelist, pagelen, indx)
+    let sublist = a:namelist[a:indx : a:indx + a:pagelen - 1]
+    let menu = [ 'Pick a '.a:what.':' ]
+    let item_count = 0
+    for name in sublist
+	let item_count += 1
+	call add(menu, printf('%2d', item_count).'. '.name)
+    endfor
+    if a:indx + a:pagelen < len(a:namelist)
+	let item_count += 1
+	call add(menu, printf('%2d', item_count).'. next page')
+    endif
+    if a:indx > 0
+	let item_count += 1
+	call add(menu, printf('%2d', item_count).'. previous page')
+    endif
+    return menu
+endfunction
+
+function! s:pick_woeid_town(country)
+    let indx = 0
+    let towns = s:get_town_list(a:country)
+    let pagelen = s:get_woeid_pagelen()
+
+    while 1
+	let menu = s:make_loc_menu('location', towns, pagelen, indx)
+
+	call inputsave()
+	let input = inputlist(menu)
+	call inputrestore()
+
+	if input < 1 || input >= len(menu)
+	    " Invalid input cancels the command.
+	    return 0
+	endif
+
+	let select = menu[input][4:]
+
+	if select == 'next page'
+	    let indx += pagelen
+	elseif select == 'previous page'
+	    let indx -= pagelen
+	    if indx < 0
+		indx = 0
+	    endif
+	else
+	    let g:twitvim_woeid = s:get_woeid(a:country, select)
+
+	    redraw
+	    echo 'Set trends region to '.select.' ('.g:twitvim_woeid.').'
+
+	    return g:twitvim_woeid
+	end
+    endwhile
+endfunction
+
+" Allow the user to pick a WOEID for Trends from a list of WOEIDs.
+function! s:pick_woeid()
+    let indx = 0
+    if s:get_woeids() == {}
+	return -1
+    endif
+    let countries = s:get_country_list()
+    let pagelen = s:get_woeid_pagelen()
+
+    while 1
+	let menu = s:make_loc_menu('country', countries, pagelen, indx)
+
+	call inputsave()
+	let input = inputlist(menu)
+	call inputrestore()
+
+	if input < 1 || input >= len(menu)
+	    " Invalid input cancels the command.
+	    return 0
+	endif
+
+	let select = menu[input][4:]
+
+	if select == 'next page'
+	    let indx += pagelen
+	elseif select == 'previous page'
+	    let indx -= pagelen
+	    if indx < 0
+		indx = 0
+	    endif
+	else
+	    if s:woeid_list[select]['towns'] == {}
+		let g:twitvim_woeid = s:get_woeid(select, '')
+
+		redraw
+		echo 'Set trends region to '.select.' ('.g:twitvim_woeid.').'
+
+		return g:twitvim_woeid
+	    else
+		return s:pick_woeid_town(select)
+	    end
+	endif
+    endwhile
+endfunction
+
+if !exists(":SetTrendLocationTwitter")
+    command SetTrendLocationTwitter :call <SID>pick_woeid()
+endif
+
+function! s:show_trends_xml(timeline)
+    let text = []
+
+    let title = 'Trending topics'
+
+    let s:curbuffer.showheader = s:get_show_header()
+    if s:curbuffer.showheader
+	call add(text, title.'*')
+	call add(text, repeat('=', s:mbstrlen(title)).'*')
+    endif
+
+    for item in s:xml_get_all(a:timeline, 'trend')
+	call add(text, s:convert_entity(item))
+    endfor
+
+    call s:twitter_wintext(text, "timeline")
+    let s:curbuffer.buffer = text
+endfunction
+
+" Get trending topics.
+function! s:Local_Trends()
+    redraw
+    echo "Getting trending topics from Twitter..."
+
+    let url = s:get_api_root().'/trends/'.s:get_twitvim_woeid().'.xml'
+    let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    if error != ''
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg("Error retrieving trending topics: ".(errormsg != '' ? errormsg : error))
+	return {}
+    endif
+
+    call s:save_buffer(0)
+    let s:curbuffer = {}
+    call s:show_trends_xml(output)
+    let s:curbuffer.buftype = 'trends'
+    let s:curbuffer.user = ''
+    let s:curbuffer.list = ''
+    let s:curbuffer.page = ''
+    redraw
+    call s:save_buffer(0)
+
+    echo 'Trending topics retrieved.'
+endfunction
+
+if !exists(":TrendTwitter")
+    command TrendTwitter :call <SID>Local_Trends()
+endif
+
+" === End of Trends Code ===
+
 " Function to load a timeline from the given parameters. For use by refresh and
 " next/prev pagination commands.
 function! s:load_timeline(buftype, user, list, page)
@@ -3070,6 +3336,8 @@ function! s:load_timeline(buftype, user, list, page)
 	call s:Direct_Messages(a:buftype, a:page)
     elseif a:buftype == "search"
 	call s:get_summize(a:user, a:page)
+    elseif a:buftype == 'trends'
+	call s:Local_Trends()
     endif
 endfunction
 
@@ -3282,7 +3550,7 @@ function! s:set_location(loc)
     redraw
     echo "Setting location on Twitter profile..."
 
-    let url = s:get_api_root()."/account/update_location.xml"
+    let url = s:get_api_root()."/account/update_profile.xml"
     let parms = { 'location' : a:loc }
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), parms)
@@ -3547,7 +3815,10 @@ function! s:format_user_info(output, fship_output)
     call add(text, '')
 
     call add(text, 'Protected: '.s:yesorno(s:xml_get_element(output, 'protected')))
-    call add(text, 'Following: '.s:yesorno(s:xml_get_element(output, 'following')))
+
+    let follow_req = s:xml_get_element(output, 'follow_request_sent')
+    let following_str = follow_req == 'true' ? 'Follow request sent' : s:yesorno(s:xml_get_element(output, 'following'))
+    call add(text, 'Following: '.following_str)
 
     let fship_source = s:xml_get_element(fship_output, 'source')
     call add(text, 'Followed_by: '.s:yesorno(s:xml_get_element(fship_source, 'followed_by')))
@@ -3746,80 +4017,17 @@ function! s:format_user_list(output, title, show_following)
     return text
 endfunction
 
-" Format a list of users, e.g. friends/followers list.
-function! s:format_user_list_json(users, title, show_following)
-    let text = []
-
-    let showheader = s:get_show_header()
-    if showheader
-	" The extra stars at the end are for the syntax highlighter to
-	" recognize the title. Then the syntax highlighter hides the stars by
-	" coloring them the same as the background. It is a bad hack.
-	call add(text, a:title.'*')
-	call add(text, repeat('=', s:mbstrlen(a:title)).'*')
+" Call Twitter API to get list of friends/followers IDs.
+function! s:get_friends_ids_2(cursor, user, followers)
+    let what = a:followers ? 'followers IDs' : 'friends IDs'
+    if a:user != ''
+	let what .= ' of '.a:user
     endif
 
-    for user in a:users
-
-	let following_str = ''
-	if a:show_following
-	    let following = user.following
-	    if following
-		let following_str = ' Following'
-	    else
-		let following_str = user.follow_request_sent ? ' Follow request sent' : ' Not following'
-	    endif
-	endif
-
-	let name = s:convert_entity(user.name)
-	let screen = user.screen_name
-	let location = s:convert_entity(user.location)
-	let slocation = location == '' ? '' : '|'.location
-	call add(text, 'Name: '.screen.' ('.name.slocation.')'.following_str)
-
-	let desc = user.description
-	if desc != ''
-	    call add(text, 'Bio: '.s:convert_entity(desc))
-	endif
-
-	if has_key(user, 'status')
-	    let statusnode = user.status
-	    let status = s:get_status_text_json(statusnode)
-	    let pubdate = s:time_filter(statusnode.created_at)
-	    call add(text, 'Status: '.s:convert_entity(status).' |'.pubdate.'|')
-	endif
-
-	call add(text, '')
-    endfor
-    return text
-endfunction
-
-" Call Twitter API to get friends or followers list.
-function! s:get_friends_json(cursor, index, user, followers)
-    if a:followers
-	let buftype = 'followers'
-	let query = '/followers/ids.json'
-	if a:user != ''
-	    let what = 'followers list of '.a:user
-	    let title = 'People following '.a:user
-	else
-	    let what = 'followers list'
-	    let title = 'People following you'
-	endif
-    else
-	let buftype = 'friends'
-	let query = '/friends/ids.json'
-	if a:user != ''
-	    let what = 'friends list of '.a:user
-	    let title = 'People '.a:user.' is following'
-	else
-	    let what = 'friends list'
-	    let title = "People you're following"
-	endif
-    endif
+    let query = '/' . (a:followers ? 'followers' : 'friends') . '/ids.xml'
 
     redraw
-    echo "Querying Twitter for ".what."..."
+    echo 'Querying Twitter for '.what.'...'
 
     let url = s:get_api_root().query.'?cursor='.a:cursor
     if a:user != ''
@@ -3827,53 +4035,91 @@ function! s:get_friends_json(cursor, index, user, followers)
     endif
 
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
-    let result = s:parse_json(output)
     if error != ''
-	call s:errormsg("Error getting ".what.": ".(has_key(result, 'error') ? result.error : error))
-	return
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg('Error getting '.what.': '.(errormsg != '' ? errormsg : error))
+	return {}
     endif
+    let result = {}
+    let result.next_cursor = s:xml_get_element(output, 'next_cursor')
+    let result.prev_cursor = s:xml_get_element(output, 'previous_cursor')
+    let result.ids = s:xml_get_all(output, 'id')
+    return result
+endfunction
 
-    if !has_key(result, 'ids')
-	call s:errormsg('Bad result from '.query)
-	return
-    endif
+" Call Twitter API to look up friends info from list of IDs.
+function! s:get_friends_info_2(ids, index)
+    redraw
+    echo 'Querying Twitter for friends/followers info...'
 
-    let idlist = result.ids
+    let idslice = a:ids[a:index : a:index + 99]
+    let url = s:get_api_root().'/users/lookup.xml?include_entities=true&user_id='.join(idslice, ',')
 
-    let idslice = idlist[a:index : a:index + 99]
-    let url = s:get_api_root().'/users/lookup.json?include_entities=true&user_id='.join(idslice, ',')
     let [error, output] = s:run_curl_oauth(url, s:ologin, s:get_proxy(), s:get_proxy_login(), {})
-    let lookup_result = s:parse_json(output)
     if error != ''
-	call s:errormsg("Error getting ".what.": ".(has_key(lookup_result, 'error') ? lookup_result.error : error))
+	let errormsg = s:xml_get_element(output, 'error')
+	call s:errormsg('Error getting friends/followers info: '.(errormsg != '' ? errormsg : error))
+	return ''
+    endif
+
+    return output
+endfunction
+
+" Call Twitter API to get friends or followers list.
+function! s:get_friends_2(cursor, ids, next_cursor, prev_cursor, index, user, followers)
+    if a:ids == []
+	let result = s:get_friends_ids_2(a:cursor, a:user, a:followers)
+	if result == {}
+	    return
+	endif
+	let ids = result.ids
+	let next_cursor = result.next_cursor
+	let prev_cursor = result.prev_cursor
+	if a:index < 0
+	    " If user is paging backwards, we want the last 100 IDs in the
+	    " list.
+	    let index = len(ids) - 100
+	    if index < 0
+		let index = 0
+	    endif
+	else
+	    let index = 0
+	endif
+    else
+	let ids = a:ids
+	let next_cursor = a:next_cursor
+	let prev_cursor = a:prev_cursor
+	let index = a:index
+    endif
+
+    let output = s:get_friends_info_2(ids, index)
+    if output == ''
 	return
     endif
 
-    let userhash = {}
-    for user in lookup_result
-	let userhash[user.id] = user
-    endfor
+    let title = a:followers ? 'Followers list' : 'Friends list'
+    if a:user != ''
+	let title .= ' of '.a:user
+    endif
 
-    " Sort users in the same order as the list of IDs.
-    let users = []
-    for id in idslice
-	if has_key(userhash, id)
-	    call add(users, userhash[id])
-	endif
-    endfor
+    let buftype = a:followers ? 'followers' : 'friends'
 
     call s:save_buffer(1)
     let s:infobuffer = {}
-    call s:twitter_wintext(s:format_user_list_json(users, title, a:followers || a:user != ''), "userinfo")
+    call s:twitter_wintext(s:format_user_list(output, title, a:followers || a:user != ''), "userinfo")
     let s:infobuffer.buftype = buftype
-    let s:infobuffer.next_cursor = result.next_cursor
-    let s:infobuffer.prev_cursor = result.previous_cursor
+    let s:infobuffer.next_cursor = next_cursor
+    let s:infobuffer.prev_cursor = prev_cursor
     let s:infobuffer.cursor = a:cursor
     let s:infobuffer.user = a:user
     let s:infobuffer.list = ''
+
+    let s:infobuffer.flist = ids
+    let s:infobuffer.findex = index
+
     redraw
     call s:save_buffer(1)
-    echo substitute(what,'^.','\u&','') 'retrieved.'
+    echo title.' retrieved.'
 endfunction
 
 " Call Twitter API to get friends or followers list.
@@ -4075,6 +4321,57 @@ function! s:get_user_lists(cursor, user, what)
     echo "User's ".item." retrieved."
 endfunction
 
+" Function to load previous or next friends/followers info page.
+" For use by next/prev pagination commands.
+function! s:load_prevnext_friends_info_2(buftype, infobuffer, previous)
+    if a:previous
+	if a:infobuffer.findex == 0
+	    if a:infobuffer.prev_cursor == 0
+		call s:warnmsg('No previous page in info buffer.')
+		return
+	    endif
+	    let cursor = a:infobuffer.prev_cursor
+	    let ids = []
+	    let next_cursor = 0
+	    let prev_cursor = 0
+
+	    " This tells s:get_friends_2() that we are paging backwards so
+	    " it'll display the last 100 items in the new ID list.
+	    let index = -1 
+	else
+	    let cursor = a:infobuffer.cursor
+	    let ids = a:infobuffer.flist
+	    let next_cursor = a:infobuffer.next_cursor
+	    let prev_cursor = a:infobuffer.prev_cursor
+	    let index = a:infobuffer.findex - 100
+	    if index < 0
+		let index = 0
+	    endif
+	endif
+    else
+	let nextindex = a:infobuffer.findex + 100
+	if nextindex >= len(a:infobuffer.flist)
+	    if a:infobuffer.next_cursor == 0
+		call s:warnmsg('No next page in info buffer.')
+		return
+	    endif
+	    let cursor = a:infobuffer.next_cursor
+	    let ids = []
+	    let next_cursor = 0
+	    let prev_cursor = 0
+	    let index = 0
+	else
+	    let cursor = a:infobuffer.cursor
+	    let ids = a:infobuffer.flist
+	    let next_cursor = a:infobuffer.next_cursor
+	    let prev_cursor = a:infobuffer.prev_cursor
+	    let index = nextindex
+	endif
+    endif
+
+    call s:get_friends_2(cursor, ids, next_cursor, prev_cursor, index, a:infobuffer.user, a:buftype == 'followers')
+endfunction
+
 " Function to load an info buffer from the given parameters.
 " For use by next/prev pagination commands.
 function! s:load_info(buftype, cursor, user, list)
@@ -4102,6 +4399,10 @@ endfunction
 " Go to next page in info buffer.
 function! s:NextPageInfo()
     if s:infobuffer != {}
+" 	if s:infobuffer.buftype == 'friends' || s:infobuffer.buftype == 'followers'
+" 	    call s:load_prevnext_friends_info_2(s:infobuffer.buftype, s:infobuffer, 0)
+" 	    return
+" 	endif
 	if s:infobuffer.next_cursor == 0
 	    call s:warnmsg("No next page in info buffer.")
 	else
@@ -4115,6 +4416,10 @@ endfunction
 " Go to previous page in info buffer.
 function! s:PrevPageInfo()
     if s:infobuffer != {}
+" 	if s:infobuffer.buftype == 'friends' || s:infobuffer.buftype == 'followers'
+" 	    call s:load_prevnext_friends_info_2(s:infobuffer.buftype, s:infobuffer, 1)
+" 	    return
+" 	endif
 	if s:infobuffer.prev_cursor == 0
 	    call s:warnmsg("No previous page in info buffer.")
 	else
@@ -4128,6 +4433,10 @@ endfunction
 " Refresh info buffer.
 function! s:RefreshInfo()
     if s:infobuffer != {}
+" 	if s:infobuffer.buftype == 'friends' || s:infobuffer.buftype == 'followers'
+" 	    call s:get_friends_2(s:infobuffer.cursor, s:infobuffer.flist, s:infobuffer.next_cursor, s:infobuffer.prev_cursor, s:infobuffer.findex, s:infobuffer.user, s:infobuffer.buftype == 'followers')
+" 	    return
+" 	endif
 	call s:load_info(s:infobuffer.buftype, s:infobuffer.cursor, s:infobuffer.user, s:infobuffer.list)
     else
 	call s:warnmsg("No info buffer.")
@@ -4145,12 +4454,12 @@ if !exists(":PreviousInfoTwitter")
 endif
 
 if !exists(":FollowingTwitter")
-"     command -nargs=? FollowingTwitter :call <SID>get_friends_json(-1, 0, <q-args>, 0)
     command -nargs=? FollowingTwitter :call <SID>get_friends(-1, <q-args>, 0)
+"     command -nargs=? FollowingTwitter :call <SID>get_friends_2(-1, [], 0, 0, 0, <q-args>, 0)
 endif
 if !exists(":FollowersTwitter")
-"     command -nargs=? FollowersTwitter :call <SID>get_friends_json(-1, 0, <q-args>, 1)
     command -nargs=? FollowersTwitter :call <SID>get_friends(-1, <q-args>, 1)
+"     command -nargs=? FollowersTwitter :call <SID>get_friends_2(-1, [], 0, 0, 0, <q-args>, 1)
 endif
 if !exists(":MembersOfListTwitter")
     command -nargs=+ MembersOfListTwitter :call <SID>DoListMembers(0, <f-args>)
