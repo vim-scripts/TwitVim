@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.7.1
+" Version: 0.7.2
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: September 21, 2011
+" Last updated: November 16, 2011
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.7.1 2011-09-21'
+let s:user_agent = 'TwitVim 0.7.2 2011-11-16'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -125,6 +125,16 @@ function! s:get_twitvim_woeid()
     return exists('g:twitvim_woeid') ? g:twitvim_woeid : 1
 endfunction
 
+" Allow user to override consumer key.
+function! s:get_consumer_key()
+    return exists('g:twitvim_consumer_key') ? g:twitvim_consumer_key : s:gc_consumer_key
+endfunction
+
+" Allow user to override consumer secret.
+function! s:get_consumer_secret()
+    return exists('g:twitvim_consumer_secret') ? g:twitvim_consumer_secret : s:gc_consumer_secret
+endfunction
+
 
 " Display an error message in the message area.
 function! s:errormsg(msg)
@@ -218,6 +228,9 @@ endfunction
 
 " Switch to a different Twitter user.
 function! s:switch_twitvim_login(user)
+    if s:tokens == {}
+	call s:read_tokens()
+    endif
     let user = a:user
     if user == ''
 	let namelist = s:list_tokens()
@@ -825,7 +838,7 @@ function! s:getOauthResponse(url, method, parms, token_secret)
     let parms = copy(a:parms)
 
     " Add some constants to hash
-    let parms["oauth_consumer_key"] = s:gc_consumer_key
+    let parms["oauth_consumer_key"] = s:get_consumer_key()
     let parms["oauth_signature_method"] = "HMAC-SHA1"
     let parms["oauth_version"] = "1.0"
 
@@ -852,7 +865,7 @@ function! s:getOauthResponse(url, method, parms, token_secret)
     " pieces, with each piece URL encoded.
     " [METHOD_UPPER_CASE]&[url]&content
     let signature_base_str = a:method . "&" . s:url_encode(baseurl) . "&" . s:url_encode(content)
-    let hmac_sha1_key = s:url_encode(s:gc_consumer_secret) . "&" . s:url_encode(a:token_secret)
+    let hmac_sha1_key = s:url_encode(s:get_consumer_secret()) . "&" . s:url_encode(a:token_secret)
     let signature = s:hmac_sha1_digest(hmac_sha1_key, signature_base_str)
 
     " Add padding character to make a multiple of 4 per the
@@ -2027,6 +2040,17 @@ function! s:Retweet_2()
 	return
     endif
 
+    " Confirm with user before retweeting. Only for new-style retweets because
+    " old-style retweets have their own prompt.
+    call inputsave()
+    let answer = input('Retweet "'.s:strtrunc(getline('.'), 40).'"? (y/n) ')
+    call inputrestore()
+    if answer != 'y' && answer != 'Y'
+	redraw
+	echo "Not retweeted."
+	return
+    endif
+
     let parms = {}
 
     " Force POST instead of GET.
@@ -2512,6 +2536,7 @@ function! s:convert_entity(str)
     let s = substitute(s, '&lt;', '<', 'g')
     let s = substitute(s, '&gt;', '>', 'g')
     let s = substitute(s, '&quot;', '"', 'g')
+    let s = substitute(s, '&apos;', "'", 'g')
     " let s = substitute(s, '&#\(\d\+\);','\=nr2char(submatch(1))', 'g')
     let s = substitute(s, '&#\(\d\+\);','\=s:nr2enc_char(submatch(1))', 'g')
     let s = substitute(s, '&#x\(\x\+\);','\=s:nr2enc_char("0x".submatch(1))', 'g')
@@ -2734,7 +2759,7 @@ function! s:get_status_text(item)
     " Remove nul characters.
     let text = substitute(text, '[\x0]', ' ', 'g')
 
-    let entities = s:xml_get_element(a:item, 'entities')
+    let entities = s:xml_get_element(s:xml_remove_elements(a:item, 'user'), 'entities')
     let urls = s:xml_get_element(entities, 'urls')
 
     " Twitter entities output currently has a url element inside each url
@@ -2743,6 +2768,23 @@ function! s:get_status_text(item)
     while 1
 	let url = s:xml_get_nth(urls, 'url', matchcount * 2)
 	let expanded_url = s:xml_get_nth(urls, 'expanded_url', matchcount)
+
+	if url == '' || expanded_url == ''
+	    break
+	endif
+
+	" echomsg "Replacing ".url." with ".expanded_url." in ".text
+	let text = s:str_replace_all(text, url, expanded_url)
+
+	let matchcount += 1
+    endwhile
+
+    " Expand media URLs too.
+    let media = s:xml_get_element(entities, 'media')
+    let matchcount = 1
+    while 1
+	let url = s:xml_get_nth(media, 'url', matchcount)
+	let expanded_url = s:xml_get_nth(media, 'expanded_url', matchcount)
 
 	if url == '' || expanded_url == ''
 	    break
@@ -3088,19 +3130,25 @@ function! s:get_woeids()
     redraw
     echo "Retrieving list of WOEIDs..."
 
-    let url = s:get_api_root().'/trends/available.xml'
+    let url = s:get_api_root().'/trends/available.json'
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    let result = s:parse_json(output)
     if error != ''
-	let errormsg = s:xml_get_element(output, 'error')
+	let errormsg = get(result, 'error', '')
 	call s:errormsg("Error retrieving list of WOEIDs: ".(errormsg != '' ? errormsg : error))
 	return {}
     endif
 
-    for location in s:xml_get_all(output, 'location')
-	let name = s:xml_get_element(location, 'name')
-	let woeid = s:xml_get_element(location, 'woeid')
-	let placetype = s:xml_get_element(location, 'placeTypeName')
-	let country = s:xml_get_element(location, 'country')
+    if type(result) != type([])
+	call s:errormsg("Invalid JSON result from ".url)
+	return {}
+    endif
+
+    for location in result
+	let name = get(location, 'name', '')
+	let woeid = get(location, 'woeid', '')
+	let placetype = get(get(location, 'placeType', {}), 'name', '')
+	let country = get(location, 'country', '')
 
 	if placetype == 'Supername'
 	    let s:woeid_list[name] = { 'woeid' : woeid, 'towns' : {} }
@@ -3202,6 +3250,8 @@ function! s:pick_woeid_town(country)
 
 	if input < 1 || input >= len(menu)
 	    " Invalid input cancels the command.
+	    redraw
+	    echo 'Trends region unchanged.'
 	    return 0
 	endif
 
@@ -3218,7 +3268,7 @@ function! s:pick_woeid_town(country)
 	    let g:twitvim_woeid = s:get_woeid(a:country, select)
 
 	    redraw
-	    echo 'Set trends region to '.select.' ('.g:twitvim_woeid.').'
+	    echo 'Trends region set to '.select.' ('.g:twitvim_woeid.').'
 
 	    return g:twitvim_woeid
 	end
@@ -3243,6 +3293,8 @@ function! s:pick_woeid()
 
 	if input < 1 || input >= len(menu)
 	    " Invalid input cancels the command.
+	    redraw
+	    echo 'Trends region unchanged.'
 	    return 0
 	endif
 
@@ -3260,10 +3312,11 @@ function! s:pick_woeid()
 		let g:twitvim_woeid = s:get_woeid(select, '')
 
 		redraw
-		echo 'Set trends region to '.select.' ('.g:twitvim_woeid.').'
+		echo 'Trends region set to '.select.' ('.g:twitvim_woeid.').'
 
 		return g:twitvim_woeid
 	    else
+		echo ' '
 		return s:pick_woeid_town(select)
 	    end
 	endif
@@ -3274,7 +3327,7 @@ if !exists(":SetTrendLocationTwitter")
     command SetTrendLocationTwitter :call <SID>pick_woeid()
 endif
 
-function! s:show_trends_xml(timeline)
+function! s:show_trends_json(timeline)
     let text = []
 
     let title = 'Trending topics'
@@ -3285,8 +3338,8 @@ function! s:show_trends_xml(timeline)
 	call add(text, repeat('=', s:mbstrlen(title)).'*')
     endif
 
-    for item in s:xml_get_all(a:timeline, 'trend')
-	call add(text, s:convert_entity(item))
+    for item in get(get(a:timeline, 0, {}), 'trends', {})
+	call add(text, s:convert_entity(get(item, 'name', '')))
     endfor
 
     call s:twitter_wintext(text, "timeline")
@@ -3298,17 +3351,23 @@ function! s:Local_Trends()
     redraw
     echo "Getting trending topics from Twitter..."
 
-    let url = s:get_api_root().'/trends/'.s:get_twitvim_woeid().'.xml'
+    let url = s:get_api_root().'/trends/'.s:get_twitvim_woeid().'.json'
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
+    let result = s:parse_json(output)
     if error != ''
-	let errormsg = s:xml_get_element(output, 'error')
+	let errormsg = get(result, 'error', '')
 	call s:errormsg("Error retrieving trending topics: ".(errormsg != '' ? errormsg : error))
+	return {}
+    endif
+
+    if type(result) != type([])
+	call s:errormsg("Invalid JSON result from ".url)
 	return {}
     endif
 
     call s:save_buffer(0)
     let s:curbuffer = {}
-    call s:show_trends_xml(output)
+    call s:show_trends_json(result)
     let s:curbuffer.buftype = 'trends'
     let s:curbuffer.user = ''
     let s:curbuffer.list = ''
