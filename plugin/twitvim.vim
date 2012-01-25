@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.7.2
+" Version: 0.7.3
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: November 16, 2011
+" Last updated: January 17, 2012
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.7.2 2011-11-16'
+let s:user_agent = 'TwitVim 0.7.3 2012-01-17'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -327,7 +327,8 @@ function! s:parse_json(str)
 	let true = 1
 	let false = 0
 	let null = ''
-	sandbox let result = eval(a:str)
+	let str = substitute(a:str, '\\u\(\x\{4}\)', '\=s:nr2enc_char("0x".submatch(1))', 'g')
+	sandbox let result = eval(str)
 	return result
     catch
 	call s:errormsg('JSON parse error: '.v:exception)
@@ -1060,6 +1061,17 @@ endfunction
 " URL-encode a string.
 function! s:url_encode(str)
     return substitute(a:str, '[^a-zA-Z0-9_.~-]', '\=s:url_encode_char(submatch(0))', 'g')
+endfunction
+
+" URL-decode a string.
+function! s:url_decode(str)
+    let s = substitute(a:str, '+', ' ', 'g')
+    let s = substitute(s, '%\([a-zA-Z0-9]\{1,2}\)', '\=nr2char("0x".submatch(1))', 'g')
+    let encoded = iconv(s, 'utf-8', &encoding)
+    if encoded != ''
+	let s = encoded
+    endif
+    return s
 endfunction
 
 " Use curl to fetch a web page.
@@ -2292,7 +2304,24 @@ function! s:launch_browser(url)
     return 0
 endfunction
 
-let s:URLMATCH = '\%([Hh][Tt][Tt][Pp]\|[Hh][Tt][Tt][Pp][Ss]\|[Ff][Tt][Pp]\)://\S\+'
+" let s:URLMATCH = '\%([Hh][Tt][Tt][Pp]\|[Hh][Tt][Tt][Pp][Ss]\|[Ff][Tt][Pp]\)://\S\+'
+
+let s:URL_PROTOCOL = '\%([Hh][Tt][Tt][Pp]\|[Hh][Tt][Tt][Pp][Ss]\|[Ff][Tt][Pp]\)://'
+let s:URL_DOMAIN = '[^[:space:])/]\+'
+let s:URL_PATH_CHARS = '[^[:space:]()]'
+
+" URL paths may contain balanced parentheses.
+let s:URL_PARENS = '('.s:URL_PATH_CHARS.'*)'
+
+" Avoid swallowing up certain punctuation characters after a URL but allow a
+" URL to end with a balanced parenthesis.
+let s:URL_PATH_END = '\%([^[:space:]\.,;:()]\|'.s:URL_PARENS.'\)'
+
+let s:URL_PATH = '\%('.s:URL_PATH_CHARS.'*\%('.s:URL_PARENS.s:URL_PATH_CHARS.'*\)*'.s:URL_PATH_END.'\)\|\%('.s:URL_PATH_CHARS.'\+\)'
+
+" Bring it all together. Use this regex to match a URL.
+let s:URLMATCH = s:URL_PROTOCOL.s:URL_DOMAIN.'\%(/\%('.s:URL_PATH.'\)\=\)\='
+
 
 " Launch web browser with the URL at the cursor position. If possible, this
 " function will try to recognize a URL within the current word. Otherwise,
@@ -3602,6 +3631,11 @@ endfunction
 
 if !exists(":RateLimitTwitter")
     command RateLimitTwitter :call <SID>get_rate_limit()
+endif
+
+" Show TwitVim version.
+if !exists(":TwitVimVersion")
+    command TwitVimVersion :echo s:user_agent
 endif
 
 " Set location field on Twitter profile.
@@ -5086,15 +5120,35 @@ if !exists(":PRgala")
     command -nargs=? PRgala :call <SID>GetShortURL("cmdline", <q-args>, "call_rgala")
 endif
 
+
+" Get status text with t.co URL expansion. (JSON version)
+function! s:get_status_text_json(item)
+    let text = get(a:item, 'text', '')
+
+    " Remove nul characters.
+    let text = substitute(text, '[\x0]', ' ', 'g')
+
+    let entities = get(a:item, 'entities', {})
+
+    let urls = get(entities, 'urls', []) + get(entities, 'media', [])
+    for url in urls
+	let fromurl = get(url, 'url', '')
+	let tourl = get(url, 'expanded_url', '')
+	if fromurl != '' && tourl != ''
+	    let text = s:str_replace_all(text, fromurl, tourl)
+	endif
+    endfor
+
+    return text
+endfunction
+
 " Parse and format search results from Twitter Search API.
 function! s:show_summize(searchres, page)
     let text = []
 
     let s:curbuffer.dmids = []
 
-    let channel = s:xml_remove_elements(a:searchres, 'entry')
-    let title = s:convert_entity(s:xml_get_element(channel, 'title'))
-
+    let title = 'Twitter Search - '.s:url_decode(get(a:searchres, 'query', ''))
     if a:page > 1
 	let title .= ' (page '.a:page.')'
     endif
@@ -5118,17 +5172,19 @@ function! s:show_summize(searchres, page)
 	let s:curbuffer.inreplyto = [0]
     endif
 
-    for item in s:xml_get_all(a:searchres, 'entry')
-	let title = s:xml_get_element(item, 'title')
-	let pubdate = s:time_filter(s:xml_get_element(item, 'updated'))
-	let sender = substitute(s:xml_get_element(item, 'uri'), 'http://twitter.com/', '', '')
+    for item in get(a:searchres, 'results', [])
+	let user = get(item, 'from_user', '')
 
-	" Parse and save the status ID.
-	let status = substitute(s:xml_get_element(item, 'id'), '^.*:', '', '')
+	let line = s:convert_entity(s:get_status_text_json(item))
+	let pubdate = s:time_filter(get(item, 'created_at', ''))
+
+	let status = get(item, 'id_str', '')
 	call add(s:curbuffer.statuses, status)
+	call add(s:curbuffer.inreplyto, get(item, 'in_reply_to_status_id_str', ''))
 
-	call add(text, sender.": ".s:convert_entity(title).' |'.pubdate.'|')
+	call add(text, user.': '.line.' |'.pubdate.'|')
     endfor
+
     call s:twitter_wintext(text, "timeline")
     let s:curbuffer.buffer = text
 endfunction
@@ -5151,17 +5207,25 @@ function! s:get_summize(query, page)
 	let param .= 'rpp='.tcount.'&'
     endif
 
-    let url = 'http://search.twitter.com/search.atom?'.param.'q='.s:url_encode(a:query)
+    let url = 'http://search.twitter.com/search.json?'.param.'include_entities=true&q='.s:url_encode(a:query)
     let [error, output] = s:run_curl(url, '', s:get_proxy(), s:get_proxy_login(), {})
 
+    let result = s:parse_json(output)
+
     if error != ''
-	call s:errormsg("Error querying Twitter Search: ".error)
+	let errormsg = get(result, 'error', '')
+	call s:errormsg("Error querying Twitter Search: ".(errormsg != '' ? errormsg : error))
+	return
+    endif
+
+    if type(result) != type({})
+	call s:errormsg("Invalid JSON result from ".url)
 	return
     endif
 
     call s:save_buffer(0)
     let s:curbuffer = {}
-    call s:show_summize(output, a:page)
+    call s:show_summize(result, a:page)
     let s:curbuffer.buftype = "search"
 
     " Stick the query in here to differentiate between sets of search results.

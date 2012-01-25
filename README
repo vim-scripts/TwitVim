@@ -1,9 +1,9 @@
 This is a mirror of http://www.vim.org/scripts/script.php?script_id=2204
 
 ===========================================================
-Note: Twitter will phase out Basic authentication on August 16, 2010. At that time, TwitVim versions earlier than 0.5.0, which do not support OAuth, will gradually encounter lower rate limits until they stop working completely on August 31. Please upgrade prior to that date. However, TwitVim 0.4.x will continue to work with identi.ca, which will still support Basic authentication.
+Note: Twitter no longer supports Basic authentication. You must use TwitVim version 0.5.0 or later. TwitVim 0.4.x will continue to work with identi.ca which still supports Basic authentication.
 
-TwitVim OAuth support requires a Vim binary compiled with either Perl or Python. See :help TwitVim-install for more details.
+TwitVim OAuth support requires either the openssl software (See http://www.openssl.org/ ) or a Vim binary compiled with Perl, Python, Ruby, or Tcl. See :help TwitVim-install for more details.
 ===========================================================
 
 TwitVim is a Vim plugin that allows you to post to Twitter and view Twitter timelines. It is an enhancement of vimscript #2124 by Travis Jeffery. Credit goes to Travis for the original script concept and implementation.
@@ -36,7 +36,7 @@ Alt-D - Starts a direct message. (from timeline buffer)
 
 :FriendsTwitter - View friends timeline.
 :UserTwitter - View your timeline.
-:RepliesTwitter - View @-replies.
+:MentionsTwitter - View @-mentions.
 :PublicTwitter - View public timeline.
 :DMTwitter - View direct messages.
 
@@ -44,7 +44,7 @@ Alt-D - Starts a direct message. (from timeline buffer)
 :ATweetburner - Same as above but insert after cursor.
 :PTweetburner - Same as above but start tweet on cmdline with short URL.
 
-And similar commands for TinyURL, SnipURL, Metamark, bit.ly, is.gd, urlBorg, tr.im, Cligs, and zi.ma.
+And similar commands for TinyURL, SnipURL, Metamark, bit.ly, goo.gl, rga.la, is.gd, urlBorg, tr.im, Cligs, and zi.ma.
 
 :SearchTwitter - Use Twitter Search.
 
@@ -52,4 +52,3 @@ Many more commands and mappings are available. See TwitVim's help documentation 
 
 Contact me on Twitter at http://twitter.com/mortonfox
 Get TwitVim announcements at http://twitter.com/twitvim
-
