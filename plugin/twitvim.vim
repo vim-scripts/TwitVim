@@ -2,12 +2,12 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.8.0
+" Version: 0.8.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
 " Created: March 28, 2008
-" Last updated: January 2, 2013
+" Last updated: August 12, 2013
 "
 " GetLatestVimScripts: 2204 1 twitvim.vim
 " ==============================================================
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.8.0 2013-01-02'
+let s:user_agent = 'TwitVim 0.8.1 2013-08-12'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -2696,22 +2696,27 @@ let s:URL_PROTOCOL = '\%([Hh][Tt][Tt][Pp]\|[Hh][Tt][Tt][Pp][Ss]\|[Ff][Tt][Pp]\):
 let s:URL_PROTOCOL_HTTPS = '\%([Hh][Tt][Tt][Pp][Ss]\)://'
 let s:URL_PROTOCOL_NON_HTTPS = '\%([Hh][Tt][Tt][Pp]\|[Ff][Tt][Pp]\)://'
 
-let s:URL_DOMAIN = '[^[:space:])/]\+'
-let s:URL_PATH_CHARS = '[^[:space:]()]'
+" s:URL_DOMAIN_CHARS is s:URL_PATH_CHARS without /
+let s:URL_DOMAIN_CHARS = '[a-zA-Z0-9!$&''()*+,.:;=?@_~%#-]'
+" s:URL_DOMAIN_END_CHARS is s:URL_PATH_END_CHARS without /
+let s:URL_DOMAIN_END_CHARS = '[a-zA-Z0-9!$&''*+=?@_~%#-]'
+let s:URL_DOMAIN_PARENS = '('.s:URL_DOMAIN_CHARS.'*)'
+let s:URL_DOMAIN = '\%('.'\%('.s:URL_DOMAIN_CHARS.'*'.s:URL_DOMAIN_PARENS.'\)'.'\|'.'\%('.s:URL_DOMAIN_CHARS.'*'.s:URL_DOMAIN_END_CHARS.'\)'.'\)'
 
-" URL paths may contain balanced parentheses.
+let s:URL_PATH_CHARS = '[a-zA-Z0-9!$&''()*+,./:;=?@_~%#-]'
 let s:URL_PARENS = '('.s:URL_PATH_CHARS.'*)'
 
 " Avoid swallowing up certain punctuation characters after a URL but allow a
 " URL to end with a balanced parenthesis.
-let s:URL_PATH_END = '\%([^[:space:]\.,;:()]\|'.s:URL_PARENS.'\)'
+" So s:URL_PATH_END_CHARS is s:URL_PATH_CHARS without .,:;()
+let s:URL_PATH_END_CHARS = '[a-zA-Z0-9!$&''*+/=?@_~%#-]'
 
-let s:URL_PATH = '\%('.s:URL_PATH_CHARS.'*\%('.s:URL_PARENS.s:URL_PATH_CHARS.'*\)*'.s:URL_PATH_END.'\)\|\%('.s:URL_PATH_CHARS.'\+\)'
+let s:URL_PATH = '\%('.'\%('.s:URL_PATH_CHARS.'*'.s:URL_PARENS.'\)'.'\|'.'\%('.s:URL_PATH_CHARS.'*'.s:URL_PATH_END_CHARS.'\)'.'\)'
 
 " Bring it all together. Use this regex to match a URL.
-let s:URLMATCH = s:URL_PROTOCOL.s:URL_DOMAIN.'\%(/\%('.s:URL_PATH.'\)\=\)\='
-let s:URLMATCH_HTTPS = s:URL_PROTOCOL_HTTPS.s:URL_DOMAIN.'\%(/\%('.s:URL_PATH.'\)\=\)\='
-let s:URLMATCH_NON_HTTPS = s:URL_PROTOCOL_NON_HTTPS.s:URL_DOMAIN.'\%(/\%('.s:URL_PATH.'\)\=\)\='
+let s:URLMATCH = s:URL_PROTOCOL.s:URL_DOMAIN.'\%(/'.s:URL_PATH.'\=\)\='
+let s:URLMATCH_HTTPS = s:URL_PROTOCOL_HTTPS.s:URL_DOMAIN.'\%(/'.s:URL_PATH.'\=\)\='
+let s:URLMATCH_NON_HTTPS = s:URL_PROTOCOL_NON_HTTPS.s:URL_DOMAIN.'\%(/'.s:URL_PATH.'\=\)\='
 
 
 " Launch web browser with the URL at the cursor position. If possible, this
@@ -4682,20 +4687,20 @@ function! s:get_friends_info_2(ids, index)
     if idslice == []
         call s:errormsg('No friends/followers?')
         return []
-    else
-        let url = s:get_api_root().'/users/lookup.json'
-        let parms = {}
-        let parms.include_entities = 'true'
-        let parms.user_id = join(idslice, ',')
+    endif
 
-        let [error, output] = s:run_curl_oauth_get(url, parms)
-        let result = s:parse_json(output)
-        if error != ''
-            let errormsg = get(result, 'error', '')
-            call s:errormsg('Error getting friends/followers info: '.(errormsg != '' ? errormsg : error))
-            return []
-        endif
-    end
+    let url = s:get_api_root().'/users/lookup.json'
+    let parms = {}
+    let parms.include_entities = 'true'
+    let parms.user_id = join(idslice, ',')
+
+    let [error, output] = s:run_curl_oauth_get(url, parms)
+    let result = s:parse_json(output)
+    if error != ''
+        let errormsg = get(result, 'error', '')
+        call s:errormsg('Error getting friends/followers info: '.(errormsg != '' ? errormsg : error))
+        return []
+    endif
 
     " Reorder result according to ID list. Twitter loses the ordering when you call it on 100 user IDs.
     let idindex = {}
@@ -4703,7 +4708,9 @@ function! s:get_friends_info_2(ids, index)
         let idindex[get(user, 'id_str', '')] = user
     endfor
 
-    return map(copy(idslice), 'idindex[v:val]')
+    " users/lookup may skip some IDs that have been suspended. So we have to be
+    " careful and filter out any IDs for which there is no info.
+    return filter(map(copy(idslice), 'get(idindex, v:val, {})'), 'v:val != {}')
 endfunction
 
 " Call Twitter API to get friends or followers list.
