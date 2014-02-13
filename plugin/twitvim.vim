@@ -2,7 +2,7 @@
 " TwitVim - Post to Twitter from Vim
 " Based on Twitter Vim script by Travis Jeffery <eatsleepgolf@gmail.com>
 "
-" Version: 0.8.0
+" Version: 0.8.1
 " License: Vim license. See :help license
 " Language: Vim script
 " Maintainer: Po Shan Cheah <morton@mortonfox.com>
@@ -23,7 +23,7 @@ let s:save_cpo = &cpo
 set cpo&vim
 
 " User agent header string.
-let s:user_agent = 'TwitVim 0.8.0 2013-01-02'
+let s:user_agent = 'TwitVim 0.8.1 2013-01-02'
 
 " Twitter character limit. Twitter used to accept tweets up to 246 characters
 " in length and display those in truncated form, but that is no longer the
@@ -37,11 +37,11 @@ let s:service_info = {
             \ 'dispname'        : 'Twitter',
             \ 'consumer_key'    : 'HyshEU8SbcsklPQ6ouF0g',
             \ 'consumer_secret' : 'U1uvxLjZxlQAasy9Kr5L2YAFnsvYTOqx1bk7uJuezQ',
-            \ 'req_url'         : 'http://api.twitter.com/oauth/request_token',
-            \ 'access_url'      : 'http://api.twitter.com/oauth/access_token',
-            \ 'authorize_url'   : 'http://api.twitter.com/oauth/authorize',
-            \ 'api_root'        : 'http://api.twitter.com/1.1',
-            \ 'search_api'      : 'http://api.twitter.com/1.1/search/tweets.json',
+            \ 'req_url'         : 'https://api.twitter.com/oauth/request_token',
+            \ 'access_url'      : 'https://api.twitter.com/oauth/access_token',
+            \ 'authorize_url'   : 'https://api.twitter.com/oauth/authorize',
+            \ 'api_root'        : 'https://api.twitter.com/1.1',
+            \ 'search_api'      : 'https://api.twitter.com/1.1/search/tweets.json',
             \ },
             \ 'identica' : {
             \ 'dispname'        : 'identi.ca',
