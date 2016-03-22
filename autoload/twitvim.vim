@@ -2477,6 +2477,7 @@ function! s:launch_browser(url)
     " point.
     if has('unix')
         let url = substitute(url, '&', '\\&', 'g')
+        let url = substitute(url, '?', '\\?', 'g')
     endif
 
     redraw
